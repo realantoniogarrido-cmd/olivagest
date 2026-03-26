@@ -7,39 +7,49 @@ import { useRouter } from 'next/navigation'
 
 export default function SociosPage() {
   const router = useRouter()
+  const [cooperativa, setCooperativa] = useState('')
   const [socios, setSocios] = useState([])
   const [loading, setLoading] = useState(true)
-  const [mostrarFormulario, setMostrarFormulario] = useState(false)
-  const [guardando, setGuardando] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
   const [form, setForm] = useState({ nombre: '', dni: '', telefono: '', email: '' })
 
   useEffect(() => {
-    async function cargar() {
+    async function cargarDatos() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+      const { data: { user } } = await supabase.auth.getUser()
+      setCooperativa(user?.user_metadata?.cooperativa || 'Mi Cooperativa')
       await cargarSocios()
       setLoading(false)
     }
-    cargar()
+    cargarDatos()
   }, [router])
 
   async function cargarSocios() {
-    const { data } = await supabase
-      .from('socios')
-      .select('*')
-      .eq('activo', true)
-      .order('nombre')
+    const { data } = await supabase.from('socios').select('*').order('nombre')
     setSocios(data || [])
   }
 
-  async function guardarSocio(e) {
+  function handleChange(e) {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
-    setGuardando(true)
-    await supabase.from('socios').insert([{ ...form }])
+    setFormError('')
+    setSaving(true)
+    if (!form.nombre) { setFormError('El nombre es obligatorio'); setSaving(false); return }
+    const { error } = await supabase.from('socios').insert([{ nombre: form.nombre, dni: form.dni || null, telefono: form.telefono || null, email: form.email || null, activo: true }])
+    if (error) { setFormError('Error al guardar: ' + error.message); setSaving(false); return }
     setForm({ nombre: '', dni: '', telefono: '', email: '' })
-    setMostrarFormulario(false)
+    setShowForm(false)
+    setSaving(false)
+    setSuccessMsg('Socio añadido correctamente')
+    setTimeout(() => setSuccessMsg(''), 3000)
     await cargarSocios()
-    setGuardando(false)
   }
 
   async function darDeBaja(id) {
@@ -56,129 +66,104 @@ export default function SociosPage() {
 
   return (
     <div className="flex min-h-screen bg-[#f5f5f0]">
-      <Sidebar cooperativa="Mi Cooperativa" />
-      <main className="ml-60 flex-1">
-
+      <Sidebar cooperativa={cooperativa} />
+      <main className="ml-60 flex-1 flex flex-col">
         <header className="bg-white border-b border-gray-100 px-7 h-14 flex items-center justify-between sticky top-0 z-40">
           <div>
             <h1 className="text-base font-bold text-gray-900">Socios</h1>
-            <p className="text-xs text-gray-400">{socios.length} socios activos</p>
+            <p className="text-xs text-gray-400">{socios.filter(s => s.activo).length} socios activos</p>
           </div>
-          <button
-            onClick={() => setMostrarFormulario(true)}
-            className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            + Nuevo socio
+          <button onClick={() => { setShowForm(!showForm); setFormError('') }}
+            className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+            {showForm ? 'Cancelar' : '+ Nuevo socio'}
           </button>
         </header>
 
         <div className="p-7">
+          {successMsg && (
+            <div className="bg-[#f0f7e8] border border-[#c5e09a] text-[#2d6a0d] text-sm font-medium px-4 py-3 rounded-xl mb-5">
+              {successMsg}
+            </div>
+          )}
 
-          {/* Formulario nuevo socio */}
-          {mostrarFormulario && (
-            <div className="bg-white border border-gray-100 rounded-xl p-6 mb-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-4">Nuevo socio</h2>
-              <form onSubmit={guardarSocio} className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nombre completo *</label>
-                  <input
-                    required
-                    value={form.nombre}
-                    onChange={e => setForm({...form, nombre: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7ab648]"
-                    placeholder="Manuel García Ruiz"
-                  />
+          {showForm && (
+            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+              <h2 className="text-sm font-bold text-gray-900 mb-5">Nuevo socio</h2>
+              <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Nombre completo <span className="text-red-400">*</span></label>
+                  <input type="text" name="nombre" value={form.nombre} onChange={handleChange} placeholder="Ej: Juan García López" required
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">DNI</label>
-                  <input
-                    value={form.dni}
-                    onChange={e => setForm({...form, dni: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7ab648]"
-                    placeholder="12345678A"
-                  />
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">DNI</label>
+                  <input type="text" name="dni" value={form.dni} onChange={handleChange} placeholder="Ej: 12345678A"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Teléfono</label>
-                  <input
-                    value={form.telefono}
-                    onChange={e => setForm({...form, telefono: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7ab648]"
-                    placeholder="953 111 111"
-                  />
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Teléfono</label>
+                  <input type="text" name="telefono" value={form.telefono} onChange={handleChange} placeholder="Ej: 612345678"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={e => setForm({...form, email: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#7ab648]"
-                    placeholder="socio@email.com"
-                  />
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Email</label>
+                  <input type="email" name="email" value={form.email} onChange={handleChange} placeholder="Ej: socio@email.com"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
                 </div>
-                <div className="col-span-2 flex gap-3 pt-2">
-                  <button
-                    type="submit"
-                    disabled={guardando}
-                    className="bg-[#1a2e1a] text-white text-sm font-semibold px-5 py-2 rounded-lg disabled:opacity-60"
-                  >
-                    {guardando ? 'Guardando...' : 'Guardar socio'}
+                {formError && <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">{formError}</div>}
+                <div className="col-span-2 flex gap-3 pt-1">
+                  <button type="submit" disabled={saving}
+                    className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60">
+                    {saving ? 'Guardando...' : 'Guardar socio'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setMostrarFormulario(false)}
-                    className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
-                  >
-                    Cancelar
-                  </button>
+                  <button type="button" onClick={() => { setShowForm(false); setFormError('') }}
+                    className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">Cancelar</button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Tabla de socios */}
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-50">
+              <h2 className="text-sm font-bold text-gray-900">Listado de socios</h2>
+            </div>
             {socios.length === 0 ? (
-              <div className="px-6 py-16 text-center">
-                <div className="text-4xl mb-3">👨‍🌾</div>
-                <div className="text-gray-500 text-sm mb-3">Aún no hay socios registrados</div>
-                <button
-                  onClick={() => setMostrarFormulario(true)}
-                  className="text-[#7ab648] font-semibold text-sm"
-                >
-                  Añadir primer socio →
-                </button>
-              </div>
+              <div className="px-6 py-12 text-center text-gray-400 text-sm">No hay socios registrados todavía.</div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-100">
+                  <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-50">
                     <th className="text-left px-6 py-3">Nombre</th>
                     <th className="text-left px-6 py-3">DNI</th>
                     <th className="text-left px-6 py-3">Teléfono</th>
                     <th className="text-left px-6 py-3">Email</th>
-                    <th className="text-left px-6 py-3">Alta</th>
+                    <th className="text-left px-6 py-3">Estado</th>
                     <th className="px-6 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {socios.map((socio, i) => (
                     <tr key={socio.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-6 py-3 font-medium text-gray-900">{socio.nombre}</td>
-                      <td className="px-6 py-3 text-gray-500">{socio.dni || '—'}</td>
+                      <td className="px-6 py-3 font-medium text-gray-900">
+                        <a href={`/socios/${socio.id}`} className="hover:text-[#4a7a1e] hover:underline transition-colors cursor-pointer">
+                          {socio.nombre}
+                        </a>
+                      </td>
+                      <td className="px-6 py-3 text-gray-500 font-mono text-xs">{socio.dni || '—'}</td>
                       <td className="px-6 py-3 text-gray-500">{socio.telefono || '—'}</td>
                       <td className="px-6 py-3 text-gray-500">{socio.email || '—'}</td>
-                      <td className="px-6 py-3 text-gray-400 text-xs">
-                        {new Date(socio.created_at).toLocaleDateString('es-ES')}
+                      <td className="px-6 py-3">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${socio.activo ? 'bg-[#e8f5d8] text-[#2d6a0d]' : 'bg-gray-100 text-gray-400'}`}>
+                          {socio.activo ? 'Activo' : 'Baja'}
+                        </span>
                       </td>
-                      <td className="px-6 py-3 text-right">
-                        <button
-                          onClick={() => darDeBaja(socio.id)}
-                          className="text-xs text-red-400 hover:text-red-600"
-                        >
-                          Dar de baja
-                        </button>
+                      <td className="px-6 py-3">
+                        {socio.activo && (
+                          <button onClick={() => darDeBaja(socio.id)}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
+                            Dar de baja
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
