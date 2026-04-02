@@ -1,14 +1,32 @@
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
 import './globals.css'
+import AppShell from '@/components/layout/AppShell'
 
-export const metadata = {
-  title: 'OlivaGest — Gestión de cooperativas',
-  description: 'Plataforma de gestión para cooperativas oleícolas',
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
+  title: 'OlivaGest',
+  description: 'Sistema de gestión de cooperativas oleícolas',
+  manifest: '/manifest.json',
+  themeColor: '#0f172a',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'OlivaGest',
+  },
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body className={inter.className}>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   )
 }

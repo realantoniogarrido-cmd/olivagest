@@ -1,246 +1,388 @@
 'use client'
+import { useState, useEffect } from 'react'
+import { supabase, getUserId } from '@/lib/supabase'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, Cell,
+} from 'recharts'
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import Sidebar from '@/components/layout/Sidebar'
-import { useRouter } from 'next/navigation'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+// ── Colores estados liquidación ────────────────────────────────
+const ESTADO_CFG = {
+  borrador:       { label: 'Borrador',      color: '#94a3b8', bg: '#f1f5f9' },
+  pendiente_pago: { label: 'Pend. de pago', color: '#f59e0b', bg: '#fffbeb' },
+  pagada:         { label: 'Pagada',        color: '#22c55e', bg: '#f0fdf4' },
+}
+
+function fmt(n, decimals = 0) {
+  return (parseFloat(n) || 0).toLocaleString('es-ES', {
+    minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+  })
+}
+function fmtEur(n) {
+  return (parseFloat(n) || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })
+}
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const [cooperativa, setCooperativa] = useState('')
-  const [stats, setStats] = useState({ socios: 0, entregas: 0, kg_total: 0, aceite_total: 0 })
-  const [ultimasEntregas, setUltimasEntregas] = useState([])
-  const [precioAceite, setPrecioAceite] = useState(null)
-  const [editandoPrecio, setEditandoPrecio] = useState(false)
-  const [nuevoPrecio, setNuevoPrecio] = useState('')
-  const [guardandoPrecio, setGuardandoPrecio] = useState(false)
-  const [graficaSocios, setGraficaSocios] = useState([])
-  const [graficaDias, setGraficaDias] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [socios, setSocios]             = useState([])
+  const [parcelas, setParcelas]         = useState([])
+  const [entregas, setEntregas]         = useState([])
+  const [liquidaciones, setLiquidaciones] = useState([])
+  const [campanyas, setCampanyas]       = useState([])
+  const [campSeleccionada, setCampSeleccionada] = useState('')
+  const [loading, setLoading]           = useState(true)
 
-  useEffect(() => {
-    async function cargarDatos() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+  useEffect(() => { cargarTodo() }, [])
 
-      const { data: { user } } = await supabase.auth.getUser()
-      setCooperativa(user?.user_metadata?.cooperativa || 'Mi Cooperativa')
+  async function cargarTodo() {
+    setLoading(true)
+    const userId = await getUserId()
+    const [{ data: s }, { data: p }, { data: e }, { data: l }] = await Promise.all([
+      supabase.from('socios').select('id, nombre').eq('user_id', userId),
+      supabase.from('parcelas').select('id, socio_id').eq('user_id', userId),
+      supabase.from('entregas')
+        .select('id, socio_id, kg, rendimiento, calidad, campaña, fecha, created_at')
+        .eq('user_id', userId)
+        .order('fecha', { ascending: false }),
+      supabase.from('liquidaciones')
+        .select('id, socio_id, campaña, kg_totales, kg_aceite_final, rendimiento_neto, precio_kg, importe_total, estado, fecha_pago')
+        .eq('user_id', userId),
+    ])
 
-      const { data: campana } = await supabase.from('campanas').select('id').eq('activa', true).single()
+    setSocios(s || [])
+    setParcelas(p || [])
+    setEntregas(e || [])
+    setLiquidaciones(l || [])
 
-      const { count: totalSocios } = await supabase.from('socios').select('*', { count: 'exact', head: true }).eq('activo', true)
-
-      const { data: entregas } = await supabase.from('entregas').select('kg_bruto, rendimiento, fecha, socio_id, socios(nombre)').eq('campana_id', campana?.id)
-      const totalKg = entregas?.reduce((s, e) => s + (e.kg_bruto || 0), 0) || 0
-      const totalAceite = entregas?.reduce((s, e) => e.rendimiento ? s + (e.kg_bruto * e.rendimiento) / 100 : s, 0) || 0
-
-      setStats({ socios: totalSocios || 0, entregas: entregas?.length || 0, kg_total: totalKg, aceite_total: totalAceite })
-
-      // Gráfica kg por socio
-      const porSocio = {}
-      entregas?.forEach(e => {
-        const nombre = e.socios?.nombre || 'Desconocido'
-        porSocio[nombre] = (porSocio[nombre] || 0) + (e.kg_bruto || 0)
-      })
-      setGraficaSocios(Object.entries(porSocio).map(([nombre, kg]) => ({ nombre: nombre.split(' ')[0], kg })).sort((a, b) => b.kg - a.kg))
-
-      // Gráfica entregas por día
-      const porDia = {}
-      entregas?.forEach(e => {
-        const dia = new Date(e.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
-        porDia[dia] = (porDia[dia] || 0) + (e.kg_bruto || 0)
-      })
-      setGraficaDias(Object.entries(porDia).map(([dia, kg]) => ({ dia, kg })))
-
-      // Últimas entregas
-      const { data: ultimas } = await supabase.from('entregas').select('*, socios(nombre)').order('created_at', { ascending: false }).limit(5)
-      setUltimasEntregas(ultimas || [])
-
-      // Precio aceite
-      const { data: config } = await supabase.from('configuracion').select('valor').eq('clave', 'precio_aceite').single()
-      if (config?.valor) setPrecioAceite(parseFloat(config.valor))
-
-      setLoading(false)
-    }
-    cargarDatos()
-  }, [router])
-
-  async function guardarPrecio() {
-    if (!nuevoPrecio || parseFloat(nuevoPrecio) <= 0) return
-    setGuardandoPrecio(true)
-    await supabase.from('configuracion').update({ valor: nuevoPrecio, updated_at: new Date().toISOString() }).eq('clave', 'precio_aceite')
-    setPrecioAceite(parseFloat(nuevoPrecio))
-    setNuevoPrecio('')
-    setEditandoPrecio(false)
-    setGuardandoPrecio(false)
+    // Campanyas únicas ordenadas desc
+    const camps = [...new Set((e || []).map(x => x.campaña).filter(Boolean))].sort().reverse()
+    setCampanyas(camps)
+    if (camps.length > 0) setCampSeleccionada(camps[0])
+    setLoading(false)
   }
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-[#f5f5f0]">
-      <div className="text-[#7ab648] font-medium">Cargando...</div>
-    </div>
+  // ── Datos filtrados por campaña ────────────────────────────
+  const entCamp  = campSeleccionada ? entregas.filter(e => e.campaña === campSeleccionada) : entregas
+  const liqCamp  = campSeleccionada ? liquidaciones.filter(l => l.campaña === campSeleccionada) : liquidaciones
+
+  const totalKg      = entCamp.reduce((s, e) => s + (parseFloat(e.kg) || 0), 0)
+  const totalImporte = liqCamp.reduce((s, l) => s + (parseFloat(l.importe_total) || 0), 0)
+  const pagado       = liqCamp.filter(l => l.estado === 'pagada').reduce((s, l) => s + (parseFloat(l.importe_total) || 0), 0)
+
+  // Kg aceite: si hay liquidaciones con rendimiento, usa esos; si no, estima al 20%
+  const kgAceiteReal = liqCamp.reduce((s, l) => s + (parseFloat(l.kg_aceite_final) || 0), 0)
+  const kgAceite = kgAceiteReal > 0 ? kgAceiteReal : totalKg * 0.2
+
+  // Socios sin liquidar en la campaña
+  const sociosConEntrega = [...new Set(entCamp.map(e => e.socio_id))]
+  const sociosConLiq     = new Set(liqCamp.map(l => l.socio_id))
+  const sociosSinLiq     = sociosConEntrega.filter(id => !sociosConLiq.has(id))
+  const nombresSinLiq    = sociosSinLiq.map(id => socios.find(s => s.id === id)?.nombre).filter(Boolean)
+
+  // Contadores estado liquidaciones
+  const liqPorEstado = { borrador: 0, pendiente_pago: 0, pagada: 0 }
+  liqCamp.forEach(l => { const e = l.estado || 'borrador'; if (liqPorEstado[e] !== undefined) liqPorEstado[e]++ })
+
+  // ── Gráfica: Top socios por kg ─────────────────────────────
+  const topSocios = socios
+    .map(s => ({
+      nombre: s.nombre?.split(' ')[0] || '?',
+      kg: entCamp.filter(e => e.socio_id === s.id).reduce((sum, e) => sum + (parseFloat(e.kg) || 0), 0),
+    }))
+    .filter(s => s.kg > 0)
+    .sort((a, b) => b.kg - a.kg)
+    .slice(0, 8)
+
+  // ── Gráfica: Kg por día (últimas 4 semanas) ────────────────
+  const hace28 = new Date(); hace28.setDate(hace28.getDate() - 28)
+  const kgPorDia = Object.entries(
+    entCamp.reduce((acc, e) => {
+      const raw = e.fecha || e.created_at
+      if (!raw) return acc
+      const d = new Date(raw)
+      if (d < hace28) return acc
+      const dia = d.toLocaleDateString('es-ES', { day: '2-digit', month: 'numeric' })
+      acc[dia] = (acc[dia] || 0) + (parseFloat(e.kg) || 0)
+      return acc
+    }, {})
   )
+    .sort((a, b) => {
+      const parse = str => { const [d, m] = str[0].split('/'); return new Date(2025, m - 1, d) }
+      return parse(a) - parse(b)
+    })
+    .map(([dia, kg]) => ({ dia, kg }))
+
+  // ── Rendimiento medio ──────────────────────────────────────
+  const rends = entCamp.filter(e => e.rendimiento).map(e => parseFloat(e.rendimiento))
+  const rendMedio = rends.length > 0 ? rends.reduce((a, b) => a + b, 0) / rends.length : null
+
+  // ── Distribución calidad ───────────────────────────────────
+  const calidades = { Extra: 0, Primera: 0, Segunda: 0 }
+  entCamp.forEach(e => { if (calidades[e.calidad] !== undefined) calidades[e.calidad]++ })
 
   return (
-    <div className="flex min-h-screen bg-[#f5f5f0]">
-      <Sidebar cooperativa={cooperativa} />
-      <main className="ml-60 flex-1 flex flex-col">
-        <header className="bg-white border-b border-gray-100 px-7 h-14 flex items-center sticky top-0 z-40">
+    <div className="p-6 max-w-6xl mx-auto">
+
+      {/* ── CABECERA ── */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Panel general</h1>
+          <p className="text-gray-500 text-sm mt-0.5">
+            {loading ? 'Cargando...' : `${socios.length} socios · ${parcelas.length} parcelas`}
+          </p>
+        </div>
+        {/* Selector campaña */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-500 font-medium">Campaña</label>
+          <select
+            value={campSeleccionada}
+            onChange={e => setCampSeleccionada(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white shadow-sm"
+          >
+            <option value="">Todas</option>
+            {campanyas.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* ── KPIs PRINCIPALES ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {/* Socios */}
+        <div className="rounded-xl p-5 text-white" style={{ backgroundColor: '#0f172a' }}>
+          <p className="text-xs uppercase tracking-wide mb-1" style={{ color: '#4ade80' }}>Socios</p>
+          <p className="text-4xl font-bold">{socios.length}</p>
+          <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{parcelas.length} parcelas registradas</p>
+        </div>
+        {/* Entregas */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <p className="text-xs uppercase tracking-wide text-gray-400 mb-1">Entregas</p>
+          <p className="text-4xl font-bold text-gray-900">{entCamp.length}</p>
+          <p className="text-xs text-gray-400 mt-2">
+            {rends.length > 0 ? `Rend. medio: ${rendMedio.toFixed(1)}%` : 'en esta campaña'}
+          </p>
+        </div>
+        {/* Kg aceituna */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <p className="text-xs uppercase tracking-wide text-gray-400 mb-1">Kg aceituna</p>
+          <p className="text-4xl font-bold text-gray-900">
+            {totalKg >= 1000 ? fmt(totalKg / 1000, 1) : fmt(totalKg)}
+            <span className="text-lg font-normal text-gray-400 ml-1">{totalKg >= 1000 ? 't' : 'kg'}</span>
+          </p>
+          <p className="text-xs text-gray-400 mt-2">
+            {kgAceiteReal > 0 ? `${fmt(kgAceite, 0)} kg aceite real` : `≈ ${fmt(kgAceite, 0)} kg aceite est.`}
+          </p>
+        </div>
+        {/* Importe */}
+        <div className="rounded-xl p-5" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+          <p className="text-xs uppercase tracking-wide mb-1" style={{ color: '#16a34a' }}>Liquidado</p>
+          <p className="text-2xl font-bold" style={{ color: '#15803d' }}>
+            {totalImporte >= 1000
+              ? `${fmt(totalImporte / 1000, 1)}k €`
+              : `${fmt(totalImporte, 0)} €`}
+          </p>
+          <p className="text-xs mt-2" style={{ color: '#16a34a' }}>
+            {pagado > 0 ? `${fmtEur(pagado)} pagado` : 'Sin pagos confirmados'}
+          </p>
+        </div>
+      </div>
+
+      {/* ── ESTADOS LIQUIDACIONES ── */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {Object.entries(ESTADO_CFG).map(([key, cfg]) => (
+          <div key={key} className="rounded-xl p-4 flex items-center justify-between" style={{ backgroundColor: cfg.bg, border: `1px solid ${cfg.color}22` }}>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: cfg.color }}>{cfg.label}</p>
+              <p className="text-3xl font-bold mt-0.5" style={{ color: key === 'borrador' ? '#334155' : cfg.color }}>
+                {liqPorEstado[key]}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: `${cfg.color}99` }}>liquidaciones</p>
+            </div>
+            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+          </div>
+        ))}
+      </div>
+
+      {/* ── ALERTA: SOCIOS SIN LIQUIDAR ── */}
+      {nombresSinLiq.length > 0 && (
+        <div className="mb-4 rounded-xl p-4 flex items-start gap-3" style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="#d97706" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
           <div>
-            <h1 className="text-base font-bold text-gray-900">Panel general</h1>
-            <p className="text-xs text-gray-400">Campaña 2025/2026</p>
+            <p className="text-sm font-semibold text-amber-800">
+              {nombresSinLiq.length} {nombresSinLiq.length === 1 ? 'socio sin liquidar' : 'socios sin liquidar'} en {campSeleccionada || 'esta campaña'}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">{nombresSinLiq.join(', ')}</p>
           </div>
-        </header>
+          <a href="/liquidaciones" className="ml-auto text-xs font-medium text-amber-700 underline flex-shrink-0">Liquidar →</a>
+        </div>
+      )}
 
-        <div className="p-7">
+      {/* ── GRÁFICAS ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {/* Top socios por kg */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">Kg por socio {campSeleccionada && <span className="text-gray-400 font-normal">· {campSeleccionada}</span>}</h2>
+          {topSocios.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={topSocios} layout="vertical" margin={{ left: 0, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}t` : v} />
+                <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={65} />
+                <Tooltip formatter={v => [`${v.toLocaleString('es-ES')} kg`, 'Kg']} />
+                <Bar dataKey="kg" radius={[0, 4, 4, 0]}>
+                  {topSocios.map((_, i) => (
+                    <Cell key={i} fill={i === 0 ? '#4ade80' : i === 1 ? '#86efac' : '#bbf7d0'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Sin entregas en esta campaña</div>
+          )}
+        </div>
 
-          {/* Métricas */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            <div className="bg-[#1a2e1a] rounded-xl p-5">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-white/50">Socios activos</div>
-              <div className="text-3xl font-extrabold text-white">{stats.socios}</div>
-            </div>
-            <div className="bg-white rounded-xl p-5 border border-gray-100">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-gray-400">Entregas campaña</div>
-              <div className="text-3xl font-extrabold text-gray-900">{stats.entregas}</div>
-            </div>
-            <div className="bg-white rounded-xl p-5 border border-gray-100">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-gray-400">Kg aceituna total</div>
-              <div className="text-3xl font-extrabold text-gray-900">
-                {(stats.kg_total / 1000).toFixed(1)}<span className="text-sm font-medium ml-1 text-gray-400">t</span>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl p-5 border border-gray-100">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-gray-400">Aceite estimado</div>
-              <div className="text-3xl font-extrabold text-gray-900">
-                {(stats.aceite_total / 1000).toFixed(2)}<span className="text-sm font-medium ml-1 text-gray-400">t</span>
-              </div>
-            </div>
-          </div>
+        {/* Kg por día */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">Entregas últimas 4 semanas</h2>
+          {kgPorDia.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={kgPorDia}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                <XAxis dataKey="dia" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}t` : v} />
+                <Tooltip formatter={v => [`${v.toLocaleString('es-ES')} kg`, 'Kg']} />
+                <Line type="monotone" dataKey="kg" stroke="#4ade80" strokeWidth={2} dot={{ r: 3, fill: '#4ade80' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Sin datos en las últimas 4 semanas</div>
+          )}
+        </div>
+      </div>
 
-          {/* Precio aceite */}
-          <div className="bg-white rounded-xl border border-gray-100 px-6 py-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-11 h-11 bg-[#e8f5d8] rounded-xl flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2d6a0d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">Precio aceite campaña</div>
-                  {precioAceite ? (
-                    <div className="text-2xl font-extrabold text-[#1a2e1a]">
-                      {precioAceite.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-                      <span className="text-sm font-medium ml-1 text-gray-400">EUR/kg aceite</span>
+      {/* ── FILA INFERIOR: stats calidad + resumen liquidaciones ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+
+        {/* Calidad */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">Distribución calidad</h2>
+          {entCamp.length > 0 ? (
+            <div className="space-y-3">
+              {Object.entries(calidades).map(([cal, count]) => {
+                const pct = entCamp.length > 0 ? Math.round((count / entCamp.length) * 100) : 0
+                const colors = { Extra: '#4ade80', Primera: '#60a5fa', Segunda: '#fbbf24' }
+                return (
+                  <div key={cal}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="font-medium text-gray-700">{cal}</span>
+                      <span className="text-gray-400">{count} entregas ({pct}%)</span>
                     </div>
-                  ) : (
-                    <div className="text-sm text-gray-400 mt-0.5">Sin precio definido — introdúcelo para calcular liquidaciones</div>
-                  )}
-                </div>
-              </div>
-              {!editandoPrecio ? (
-                <button onClick={() => { setEditandoPrecio(true); setNuevoPrecio(precioAceite || '') }}
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-[#1a2e1a] border border-gray-200 hover:border-gray-300 px-4 py-2 rounded-lg transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  {precioAceite ? 'Actualizar precio' : 'Introducir precio'}
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input type="number" value={nuevoPrecio} onChange={e => setNuevoPrecio(e.target.value)}
-                    placeholder="Ej: 3.80" min="0" step="0.01" autoFocus
-                    className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                  <span className="text-sm text-gray-500 font-medium">EUR/kg</span>
-                  <button onClick={guardarPrecio} disabled={guardandoPrecio}
-                    className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60">
-                    {guardandoPrecio ? '...' : 'Guardar'}
-                  </button>
-                  <button onClick={() => setEditandoPrecio(false)} className="text-sm text-gray-400 hover:text-gray-600 px-2 py-2">Cancelar</button>
-                </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors[cal] }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="h-24 flex items-center justify-center text-gray-400 text-sm">Sin datos</div>
+          )}
+        </div>
+
+        {/* Resumen liquidaciones */}
+        <div className="md:col-span-2 bg-white border border-gray-100 shadow-sm rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gray-800">Resumen liquidaciones</h2>
+            <a href="/liquidaciones" className="text-xs text-gray-400 hover:text-gray-600">Ver todas →</a>
+          </div>
+          {liqCamp.length > 0 ? (
+            <div className="space-y-2">
+              {liqCamp
+                .sort((a, b) => (parseFloat(b.importe_total) || 0) - (parseFloat(a.importe_total) || 0))
+                .slice(0, 5)
+                .map(liq => {
+                  const socio = socios.find(s => s.id === liq.socio_id)
+                  const est = ESTADO_CFG[liq.estado || 'borrador']
+                  return (
+                    <div key={liq.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: '#0f172a' }}>
+                          {(socio?.nombre || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{socio?.nombre || '—'}</p>
+                          {liq.kg_aceite_final
+                            ? <p className="text-xs text-gray-400">{fmt(liq.kg_aceite_final, 0)} kg aceite · {liq.rendimiento_neto}% rend.</p>
+                            : <p className="text-xs text-gray-400">{fmt(liq.kg_totales, 0)} kg aceituna</p>
+                          }
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: est.bg, color: est.color }}>
+                          {est.label}
+                        </span>
+                        <span className="text-sm font-bold" style={{ color: '#15803d' }}>
+                          {fmtEur(liq.importe_total)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              {liqCamp.length > 5 && (
+                <p className="text-xs text-gray-400 pt-1 text-center">y {liqCamp.length - 5} más...</p>
               )}
             </div>
-          </div>
-
-          {/* Gráficas */}
-          {graficaSocios.length > 0 && (
-            <div className="grid grid-cols-2 gap-6 mb-6">
-
-              {/* Kg por socio */}
-              <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <h2 className="text-sm font-bold text-gray-900 mb-5">Kg aceituna por socio</h2>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={graficaSocios} barSize={32}>
-                    <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `${(v/1000).toFixed(1)}t`} />
-                    <Tooltip
-                      formatter={(value) => [`${value.toLocaleString('es-ES')} kg`, 'Kg aceituna']}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
-                    />
-                    <Bar dataKey="kg" radius={[6, 6, 0, 0]}>
-                      {graficaSocios.map((_, i) => (
-                        <Cell key={i} fill={i === 0 ? '#1a2e1a' : '#7ab648'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Entregas por día */}
-              <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <h2 className="text-sm font-bold text-gray-900 mb-5">Kg entregados por día</h2>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={graficaDias} barSize={32}>
-                    <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `${(v/1000).toFixed(1)}t`} />
-                    <Tooltip
-                      formatter={(value) => [`${value.toLocaleString('es-ES')} kg`, 'Kg aceituna']}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
-                    />
-                    <Bar dataKey="kg" radius={[6, 6, 0, 0]} fill="#7ab648" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
+          ) : (
+            <div className="h-24 flex items-center justify-center text-gray-400 text-sm">
+              Sin liquidaciones en esta campaña
             </div>
           )}
-
-          {/* Últimas entregas */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-gray-900">Últimas entregas</h2>
-              <a href="/entregas" className="text-xs text-[#4a7a1e] font-semibold hover:underline">Ver todas</a>
-            </div>
-            {ultimasEntregas.length === 0 ? (
-              <div className="px-6 py-10 text-center text-gray-400 text-sm">No hay entregas registradas todavía.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-50">
-                    <th className="text-left px-6 py-3">Socio</th>
-                    <th className="text-left px-6 py-3">Fecha</th>
-                    <th className="text-right px-6 py-3">Kg bruto</th>
-                    <th className="text-right px-6 py-3">Rendim.</th>
-                    <th className="text-left px-6 py-3">Calidad</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ultimasEntregas.map((e, i) => (
-                    <tr key={e.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-6 py-3 font-medium text-gray-900">{e.socios?.nombre || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{new Date(e.fecha + 'T00:00:00').toLocaleDateString('es-ES')}</td>
-                      <td className="px-6 py-3 text-right tabular-nums font-medium text-gray-900">{e.kg_bruto?.toLocaleString('es-ES')} kg</td>
-                      <td className="px-6 py-3 text-right tabular-nums text-gray-500">{e.rendimiento != null ? `${e.rendimiento}%` : '—'}</td>
-                      <td className="px-6 py-3">
-                        <span className="bg-[#e8f5d8] text-[#2d6a0d] text-xs font-semibold px-2 py-0.5 rounded">{e.calidad || 'AOVE'}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
         </div>
-      </main>
+      </div>
+
+      {/* ── ÚLTIMAS ENTREGAS ── */}
+      <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
+        <div className="px-5 py-4 flex items-center justify-between border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-800">Últimas entregas</h2>
+          <a href="/entregas" className="text-xs text-gray-400 hover:text-gray-600">Ver todas →</a>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left px-5 py-3">Socio</th>
+              <th className="text-left px-5 py-3">Campaña</th>
+              <th className="text-left px-5 py-3">Fecha</th>
+              <th className="text-right px-5 py-3">Kg</th>
+              <th className="text-right px-5 py-3">Rendim.</th>
+              <th className="text-left px-5 py-3">Calidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entCamp.slice(0, 7).map(e => {
+              const socio = socios.find(s => s.id === e.socio_id)
+              const fecha = e.fecha || e.created_at
+              const CALIDAD_COLORS = { Extra: 'bg-green-100 text-green-800', Primera: 'bg-blue-100 text-blue-800', Segunda: 'bg-amber-100 text-amber-800' }
+              return (
+                <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
+                  <td className="px-5 py-3 font-medium text-gray-900">{socio?.nombre || '—'}</td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">{e.campaña || '—'}</td>
+                  <td className="px-5 py-3 text-gray-500">{fecha ? new Date(fecha).toLocaleDateString('es-ES') : '—'}</td>
+                  <td className="px-5 py-3 text-right text-gray-700">{fmt(e.kg)} kg</td>
+                  <td className="px-5 py-3 text-right text-gray-500">{e.rendimiento ? `${e.rendimiento}%` : '—'}</td>
+                  <td className="px-5 py-3">
+                    {e.calidad
+                      ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CALIDAD_COLORS[e.calidad] || 'bg-gray-100 text-gray-600'}`}>{e.calidad}</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                </tr>
+              )
+            })}
+            {entCamp.length === 0 && (
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">No hay entregas en esta campaña</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

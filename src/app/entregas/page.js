@@ -1,243 +1,246 @@
 'use client'
-
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import Sidebar from '@/components/layout/Sidebar'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { supabase, getUserId } from '@/lib/supabase'
 
 export default function EntregasPage() {
-  const router = useRouter()
-  const [cooperativa, setCooperativa] = useState('')
   const [entregas, setEntregas] = useState([])
   const [socios, setSocios] = useState([])
-  const [campanaId, setCampanaId] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
+  const [parcelas, setParcelas] = useState([])
+  const [form, setForm] = useState({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' })
+  const [loading, setLoading] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [mostrarForm, setMostrarForm] = useState(false)
 
-  const formVacio = { socio_id: '', fecha: new Date().toISOString().split('T')[0], kg_bruto: '', rendimiento: '', calidad: 'AOVE', notas: '' }
-  const [form, setForm] = useState(formVacio)
+  useEffect(() => { fetchTodo() }, [])
 
-  useEffect(() => {
-    async function cargarDatos() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      const { data: { user } } = await supabase.auth.getUser()
-      setCooperativa(user?.user_metadata?.cooperativa || 'Mi Cooperativa')
-      const { data: campana } = await supabase.from('campanas').select('id').eq('activa', true).single()
-      if (campana) setCampanaId(campana.id)
-      const { data: sociosData } = await supabase.from('socios').select('id, nombre').eq('activo', true).order('nombre')
-      setSocios(sociosData || [])
-      await cargarEntregas(campana?.id)
-      setLoading(false)
-    }
-    cargarDatos()
-  }, [router])
-
-  async function cargarEntregas(cId) {
-    const query = supabase.from('entregas').select('*, socios(nombre)').order('fecha', { ascending: false }).limit(100)
-    if (cId) query.eq('campana_id', cId)
-    const { data } = await query
-    setEntregas(data || [])
+  async function fetchTodo() {
+    const userId = await getUserId()
+    const [{ data: e }, { data: s }, { data: p }] = await Promise.all([
+      supabase.from('entregas').select('*, socios(nombre), parcelas(nombre)').eq('user_id', userId).order('created_at', { ascending: false }),
+      supabase.from('socios').select('*').eq('user_id', userId).order('nombre'),
+      supabase.from('parcelas').select('*').eq('user_id', userId).order('nombre'),
+    ])
+    setEntregas(e || [])
+    setSocios(s || [])
+    setParcelas(p || [])
   }
 
-  function handleChange(e) { setForm(prev => ({ ...prev, [e.target.name]: e.target.value })) }
-
-  function abrirEditar(entrega) {
-    setEditando(entrega.id)
-    setForm({ socio_id: entrega.socio_id, fecha: entrega.fecha, kg_bruto: entrega.kg_bruto, rendimiento: entrega.rendimiento ?? '', calidad: entrega.calidad || 'AOVE', notas: entrega.notas || '' })
-    setShowForm(true)
-    setFormError('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  function cancelar() { setShowForm(false); setEditando(null); setForm(formVacio); setFormError('') }
-
-  async function eliminar(id) {
-    if (!confirm('¿Seguro que quieres eliminar esta entrega?')) return
-    const { error } = await supabase.from('entregas').delete().eq('id', id)
-    if (error) { alert('Error al eliminar: ' + error.message); return }
-    setSuccessMsg('Entrega eliminada')
-    setTimeout(() => setSuccessMsg(''), 3000)
-    await cargarEntregas(campanaId)
-  }
+  // Parcelas filtradas según socio seleccionado en el form
+  const parcelasFiltradas = form.socio_id
+    ? parcelas.filter(p => p.socio_id === form.socio_id)
+    : parcelas
 
   async function handleSubmit(e) {
     e.preventDefault()
-    setFormError('')
-    setSaving(true)
-    if (!form.socio_id) { setFormError('Selecciona un socio'); setSaving(false); return }
-    if (!form.kg_bruto || parseFloat(form.kg_bruto) <= 0) { setFormError('Los kg brutos deben ser mayores que 0'); setSaving(false); return }
-    const payload = { socio_id: form.socio_id, campana_id: campanaId, fecha: form.fecha, kg_bruto: parseFloat(form.kg_bruto), rendimiento: form.rendimiento ? parseFloat(form.rendimiento) : null, calidad: form.calidad, notas: form.notas || null }
-    let error
-    if (editando) {
-      ;({ error } = await supabase.from('entregas').update(payload).eq('id', editando))
-    } else {
-      ;({ error } = await supabase.from('entregas').insert([payload]))
+    setLoading(true)
+    const userId = await getUserId()
+    const datos = {
+      socio_id: form.socio_id,
+      parcela_id: form.parcela_id || null,
+      kg: form.kg,
+      rendimiento: form.rendimiento || null,
+      calidad: form.calidad,
+      campaña: form.campaña || null,
+      notas: form.notas || null,
     }
-    if (error) { setFormError('Error al guardar: ' + error.message); setSaving(false); return }
-    cancelar()
-    setSaving(false)
-    setSuccessMsg(editando ? 'Entrega actualizada' : 'Entrega registrada correctamente')
-    setTimeout(() => setSuccessMsg(''), 3000)
-    await cargarEntregas(campanaId)
+    if (editando) {
+      await supabase.from('entregas').update(datos).eq('id', editando)
+      setEditando(null)
+    } else {
+      await supabase.from('entregas').insert([{ ...datos, user_id: userId }])
+    }
+    setForm({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' })
+    setMostrarForm(false)
+    fetchTodo()
+    setLoading(false)
   }
 
-  function kgAceite(e) {
-    if (!e.rendimiento) return '—'
-    return ((e.kg_bruto * e.rendimiento) / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' kg'
+  function handleEditar(entrega) {
+    setForm({
+      socio_id: entrega.socio_id,
+      parcela_id: entrega.parcela_id || '',
+      kg: entrega.kg,
+      rendimiento: entrega.rendimiento || '',
+      calidad: entrega.calidad || 'Primera',
+      campaña: entrega.campaña || '',
+      notas: entrega.notas || '',
+    })
+    setEditando(entrega.id)
+    setMostrarForm(true)
   }
 
-  const totalKg = entregas.reduce((sum, e) => sum + (e.kg_bruto || 0), 0)
-  const totalAceite = entregas.reduce((sum, e) => e.rendimiento ? sum + (e.kg_bruto * e.rendimiento) / 100 : sum, 0)
+  async function handleEliminar(id) {
+    if (!confirm('¿Eliminar esta entrega?')) return
+    await supabase.from('entregas').delete().eq('id', id)
+    fetchTodo()
+  }
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-[#f5f5f0]">
-      <div className="text-[#7ab648] font-medium">Cargando...</div>
-    </div>
-  )
+  const totalKg = entregas.reduce((s, e) => s + parseFloat(e.kg || 0), 0)
 
   return (
-    <div className="flex min-h-screen bg-[#f5f5f0]">
-      <Sidebar cooperativa={cooperativa} />
-      <main className="ml-60 flex-1 flex flex-col">
-        <header className="bg-white border-b border-gray-100 px-7 h-14 flex items-center justify-between sticky top-0 z-40">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Entregas de aceituna</h1>
-            <p className="text-xs text-gray-400">Campaña 2025/2026</p>
-          </div>
-          <button onClick={() => { cancelar(); setShowForm(!showForm) }}
-            className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-            {showForm ? 'Cancelar' : '+ Nueva entrega'}
-          </button>
-        </header>
-
-        <div className="p-7">
-          {successMsg && (
-            <div className="bg-[#f0f7e8] border border-[#c5e09a] text-[#2d6a0d] text-sm font-medium px-4 py-3 rounded-xl mb-5">{successMsg}</div>
-          )}
-
-          {showForm && (
-            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-5">{editando ? 'Editar entrega' : 'Registrar nueva entrega'}</h2>
-              <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Socio <span className="text-red-400">*</span></label>
-                  <select name="socio_id" value={form.socio_id} onChange={handleChange} required
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648] bg-white">
-                    <option value="">— Seleccionar socio —</option>
-                    {socios.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Fecha</label>
-                  <input type="date" name="fecha" value={form.fecha} onChange={handleChange}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Kg bruto <span className="text-red-400">*</span></label>
-                  <input type="number" name="kg_bruto" value={form.kg_bruto} onChange={handleChange} placeholder="Ej: 1500" min="0" step="0.01" required
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Rendimiento (%)</label>
-                  <input type="number" name="rendimiento" value={form.rendimiento} onChange={handleChange} placeholder="Ej: 19.5" min="0" max="100" step="0.1"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Calidad</label>
-                  <select name="calidad" value={form.calidad} onChange={handleChange}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648] bg-white">
-                    <option value="AOVE">AOVE — Virgen Extra</option>
-                    <option value="AOV">AOV — Virgen</option>
-                    <option value="AO">AO — Aceite de oliva</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Notas</label>
-                  <input type="text" name="notas" value={form.notas} onChange={handleChange} placeholder="Observaciones opcionales..."
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                {formError && <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">{formError}</div>}
-                <div className="col-span-2 flex gap-3 pt-1">
-                  <button type="submit" disabled={saving}
-                    className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60">
-                    {saving ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar entrega'}
-                  </button>
-                  <button type="button" onClick={cancelar} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">Cancelar</button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-[#1a2e1a] rounded-xl p-5">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-white/50">Total kg aceituna</div>
-              <div className="text-2xl font-extrabold tracking-tight text-white">{(totalKg / 1000).toFixed(1)}<span className="text-sm font-medium ml-1 text-white/40">t</span></div>
-            </div>
-            <div className="bg-white rounded-xl p-5 border border-gray-100">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-gray-400">Aceite estimado</div>
-              <div className="text-2xl font-extrabold tracking-tight text-gray-900">{(totalAceite / 1000).toFixed(2)}<span className="text-sm font-medium ml-1 text-gray-400">t</span></div>
-            </div>
-            <div className="bg-white rounded-xl p-5 border border-gray-100">
-              <div className="text-xs font-medium uppercase tracking-wide mb-2 text-gray-400">Entregas registradas</div>
-              <div className="text-2xl font-extrabold tracking-tight text-gray-900">{entregas.length}</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-bold text-gray-900">Historial de entregas</h2>
-            </div>
-            {entregas.length === 0 ? (
-              <div className="px-6 py-12 text-center text-gray-400 text-sm">No hay entregas registradas.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-50">
-                    <th className="text-left px-6 py-3">Socio</th>
-                    <th className="text-left px-6 py-3">Fecha</th>
-                    <th className="text-right px-6 py-3">Kg bruto</th>
-                    <th className="text-right px-6 py-3">Rendim.</th>
-                    <th className="text-right px-6 py-3">Kg aceite</th>
-                    <th className="text-left px-6 py-3">Calidad</th>
-                    <th className="text-left px-6 py-3">Notas</th>
-                    <th className="px-6 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entregas.map((e, i) => (
-                    <tr key={e.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-6 py-3 font-medium text-gray-900">{e.socios?.nombre || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{new Date(e.fecha + 'T00:00:00').toLocaleDateString('es-ES')}</td>
-                      <td className="px-6 py-3 text-right text-gray-700 font-medium tabular-nums">{e.kg_bruto?.toLocaleString('es-ES')} kg</td>
-                      <td className="px-6 py-3 text-right text-gray-500 tabular-nums">{e.rendimiento != null ? `${e.rendimiento}%` : '—'}</td>
-                      <td className="px-6 py-3 text-right text-[#4a7a1e] font-semibold tabular-nums">{kgAceite(e)}</td>
-                      <td className="px-6 py-3"><span className="bg-[#e8f5d8] text-[#2d6a0d] text-xs font-semibold px-2 py-0.5 rounded">{e.calidad || 'AOVE'}</span></td>
-                      <td className="px-6 py-3 text-gray-400 text-xs">{e.notas || '—'}</td>
-                      <td className="px-6 py-3">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <button onClick={() => abrirEditar(e)} title="Editar"
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-500 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
-                          <button onClick={() => eliminar(e.id)} title="Eliminar"
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-red-100 hover:text-red-600 text-gray-500 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Entregas</h1>
+          <p className="text-gray-500 mt-1">{entregas.length} entregas · {totalKg.toLocaleString('es-ES')} kg totales</p>
         </div>
-      </main>
+        <button
+          onClick={() => { setMostrarForm(!mostrarForm); setEditando(null); setForm({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' }) }}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium"
+          style={{ backgroundColor: '#0f172a' }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {mostrarForm ? 'Cancelar' : 'Nueva entrega'}
+        </button>
+      </div>
+
+      {mostrarForm && (
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h2 className="md:col-span-2 font-semibold text-gray-800">{editando ? 'Editar entrega' : 'Nueva entrega'}</h2>
+
+          {/* Socio */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Socio <span className="text-red-500">*</span></label>
+            <select
+              value={form.socio_id}
+              onChange={e => setForm({ ...form, socio_id: e.target.value, parcela_id: '' })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+              required
+            >
+              <option value="">Seleccionar socio...</option>
+              {socios.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </div>
+
+          {/* Parcela */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Parcela de origen
+              <span className="ml-1 text-xs text-gray-400">(trazabilidad)</span>
+            </label>
+            <select
+              value={form.parcela_id}
+              onChange={e => setForm({ ...form, parcela_id: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            >
+              <option value="">Sin parcela específica</option>
+              {parcelasFiltradas.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}{p.municipio ? ` — ${p.municipio}` : ''}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Campaña */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Campaña</label>
+            <input
+              type="text" placeholder="Ej: 2024/2025"
+              value={form.campaña}
+              onChange={e => setForm({ ...form, campaña: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            />
+          </div>
+
+          {/* Kg */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Kg bruto <span className="text-red-500">*</span></label>
+            <input
+              type="number" step="0.1" placeholder="0"
+              value={form.kg}
+              onChange={e => setForm({ ...form, kg: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+              required
+            />
+          </div>
+
+          {/* Rendimiento */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Rendimiento (%)</label>
+            <input
+              type="number" step="0.1" placeholder="Ej: 20"
+              value={form.rendimiento}
+              onChange={e => setForm({ ...form, rendimiento: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            />
+          </div>
+
+          {/* Calidad */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Calidad</label>
+            <select
+              value={form.calidad}
+              onChange={e => setForm({ ...form, calidad: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            >
+              <option value="Extra">Extra</option>
+              <option value="Primera">Primera</option>
+              <option value="Segunda">Segunda</option>
+            </select>
+          </div>
+
+          {/* Notas */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+            <input
+              type="text" placeholder="Observaciones..."
+              value={form.notas}
+              onChange={e => setForm({ ...form, notas: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <button type="submit" disabled={loading} className="w-full py-2 px-4 rounded-lg text-white font-medium text-sm" style={{ backgroundColor: '#0f172a' }}>
+              {loading ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar entrega'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left px-5 py-3">Socio</th>
+              <th className="text-left px-5 py-3">Parcela</th>
+              <th className="text-left px-5 py-3">Campaña</th>
+              <th className="text-left px-5 py-3">Fecha</th>
+              <th className="text-right px-5 py-3">Kg bruto</th>
+              <th className="text-right px-5 py-3">Rendim.</th>
+              <th className="text-left px-5 py-3">Calidad</th>
+              <th className="text-center px-5 py-3">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entregas.map(e => (
+              <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
+                <td className="px-5 py-3 font-medium text-gray-900">{e.socios?.nombre}</td>
+                <td className="px-5 py-3 text-gray-500 text-xs">{e.parcelas?.nombre || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-3 text-gray-600">{e.campaña || '—'}</td>
+                <td className="px-5 py-3 text-gray-500">{new Date(e.created_at).toLocaleDateString('es-ES')}</td>
+                <td className="px-5 py-3 text-right font-medium text-gray-900">{parseFloat(e.kg || 0).toLocaleString('es-ES')} kg</td>
+                <td className="px-5 py-3 text-right text-gray-600">{e.rendimiento ? `${e.rendimiento}%` : '—'}</td>
+                <td className="px-5 py-3">
+                  {e.calidad ? (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.calidad === 'Extra' ? 'bg-green-100 text-green-800' : e.calidad === 'Primera' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'}`}>
+                      {e.calidad}
+                    </span>
+                  ) : '—'}
+                </td>
+                <td className="px-5 py-3 text-center flex gap-2 justify-center">
+                  <button onClick={() => handleEditar(e)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-xs hover:bg-blue-200">Editar</button>
+                  <button onClick={() => handleEliminar(e.id)} className="bg-red-100 text-red-700 px-3 py-1 rounded-lg text-xs hover:bg-red-200">Eliminar</button>
+                </td>
+              </tr>
+            ))}
+            {entregas.length === 0 && (
+              <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">No hay entregas registradas</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

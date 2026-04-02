@@ -1,178 +1,208 @@
 'use client'
-
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import Sidebar from '@/components/layout/Sidebar'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { supabase, getUserId } from '@/lib/supabase'
+import Link from 'next/link'
 
 export default function SociosPage() {
-  const router = useRouter()
-  const [cooperativa, setCooperativa] = useState('')
   const [socios, setSocios] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
-  const [form, setForm] = useState({ nombre: '', dni: '', telefono: '', email: '' })
+  const [form, setForm] = useState({ nombre: '', dni: '', telefono: '', email: '', direccion: '' })
+  const [loading, setLoading] = useState(false)
+  const [mostrarForm, setMostrarForm] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
+  const [invitando, setInvitando] = useState(null)   // socio.id
+  const [invitadoMsg, setInvitadoMsg] = useState('')  // feedback msg
 
-  useEffect(() => {
-    async function cargarDatos() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      const { data: { user } } = await supabase.auth.getUser()
-      setCooperativa(user?.user_metadata?.cooperativa || 'Mi Cooperativa')
-      await cargarSocios()
-      setLoading(false)
-    }
-    cargarDatos()
-  }, [router])
+  useEffect(() => { fetchSocios() }, [])
 
-  async function cargarSocios() {
-    const { data } = await supabase.from('socios').select('*').order('nombre')
+  async function fetchSocios() {
+    const userId = await getUserId()
+    const { data } = await supabase.from('socios').select('*').eq('user_id', userId).order('nombre')
     setSocios(data || [])
-  }
-
-  function handleChange(e) {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    setFormError('')
-    setSaving(true)
-    if (!form.nombre) { setFormError('El nombre es obligatorio'); setSaving(false); return }
-    const { error } = await supabase.from('socios').insert([{ nombre: form.nombre, dni: form.dni || null, telefono: form.telefono || null, email: form.email || null, activo: true }])
-    if (error) { setFormError('Error al guardar: ' + error.message); setSaving(false); return }
-    setForm({ nombre: '', dni: '', telefono: '', email: '' })
-    setShowForm(false)
-    setSaving(false)
-    setSuccessMsg('Socio añadido correctamente')
-    setTimeout(() => setSuccessMsg(''), 3000)
-    await cargarSocios()
+    setLoading(true)
+    const userId = await getUserId()
+    await supabase.from('socios').insert([{ ...form, user_id: userId }])
+    setForm({ nombre: '', dni: '', telefono: '', email: '', direccion: '' })
+    setMostrarForm(false)
+    fetchSocios()
+    setLoading(false)
   }
 
-  async function darDeBaja(id) {
-    if (!confirm('¿Dar de baja a este socio?')) return
-    await supabase.from('socios').update({ activo: false }).eq('id', id)
-    await cargarSocios()
+  async function handleInvitar(socio) {
+    if (!socio.email) {
+      alert('Este socio no tiene email registrado. Añádelo primero en su ficha.')
+      return
+    }
+    setInvitando(socio.id)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: socio.email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/portal/callback`,
+        shouldCreateUser: true,
+      },
+    })
+    if (error) {
+      setInvitadoMsg(`❌ Error al enviar invitación a ${socio.email}`)
+    } else {
+      setInvitadoMsg(`✅ Acceso enviado a ${socio.email}`)
+    }
+    setTimeout(() => setInvitadoMsg(''), 5000)
+    setInvitando(null)
   }
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-[#f5f5f0]">
-      <div className="text-[#7ab648] font-medium">Cargando...</div>
-    </div>
+  async function handleEliminar(id) {
+    if (!confirm('¿Eliminar este socio?')) return
+    await supabase.from('socios').delete().eq('id', id)
+    fetchSocios()
+  }
+
+  const sociosFiltrados = socios.filter(s =>
+    s.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    s.dni?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    s.email?.toLowerCase().includes(busqueda.toLowerCase())
   )
 
   return (
-    <div className="flex min-h-screen bg-[#f5f5f0]">
-      <Sidebar cooperativa={cooperativa} />
-      <main className="ml-60 flex-1 flex flex-col">
-        <header className="bg-white border-b border-gray-100 px-7 h-14 flex items-center justify-between sticky top-0 z-40">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Socios</h1>
-            <p className="text-xs text-gray-400">{socios.filter(s => s.activo).length} socios activos</p>
-          </div>
-          <button onClick={() => { setShowForm(!showForm); setFormError('') }}
-            className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-            {showForm ? 'Cancelar' : '+ Nuevo socio'}
-          </button>
-        </header>
-
-        <div className="p-7">
-          {successMsg && (
-            <div className="bg-[#f0f7e8] border border-[#c5e09a] text-[#2d6a0d] text-sm font-medium px-4 py-3 rounded-xl mb-5">
-              {successMsg}
-            </div>
-          )}
-
-          {showForm && (
-            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-5">Nuevo socio</h2>
-              <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Nombre completo <span className="text-red-400">*</span></label>
-                  <input type="text" name="nombre" value={form.nombre} onChange={handleChange} placeholder="Ej: Juan García López" required
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">DNI</label>
-                  <input type="text" name="dni" value={form.dni} onChange={handleChange} placeholder="Ej: 12345678A"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Teléfono</label>
-                  <input type="text" name="telefono" value={form.telefono} onChange={handleChange} placeholder="Ej: 612345678"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Email</label>
-                  <input type="email" name="email" value={form.email} onChange={handleChange} placeholder="Ej: socio@email.com"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7ab648]" />
-                </div>
-                {formError && <div className="col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">{formError}</div>}
-                <div className="col-span-2 flex gap-3 pt-1">
-                  <button type="submit" disabled={saving}
-                    className="bg-[#1a2e1a] hover:bg-[#2a4a2a] text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-60">
-                    {saving ? 'Guardando...' : 'Guardar socio'}
-                  </button>
-                  <button type="button" onClick={() => { setShowForm(false); setFormError('') }}
-                    className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">Cancelar</button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-bold text-gray-900">Listado de socios</h2>
-            </div>
-            {socios.length === 0 ? (
-              <div className="px-6 py-12 text-center text-gray-400 text-sm">No hay socios registrados todavía.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-50">
-                    <th className="text-left px-6 py-3">Nombre</th>
-                    <th className="text-left px-6 py-3">DNI</th>
-                    <th className="text-left px-6 py-3">Teléfono</th>
-                    <th className="text-left px-6 py-3">Email</th>
-                    <th className="text-left px-6 py-3">Estado</th>
-                    <th className="px-6 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {socios.map((socio, i) => (
-                    <tr key={socio.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      <td className="px-6 py-3 font-medium text-gray-900">
-                        <a href={`/socios/${socio.id}`} className="hover:text-[#4a7a1e] hover:underline transition-colors cursor-pointer">
-                          {socio.nombre}
-                        </a>
-                      </td>
-                      <td className="px-6 py-3 text-gray-500 font-mono text-xs">{socio.dni || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{socio.telefono || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{socio.email || '—'}</td>
-                      <td className="px-6 py-3">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${socio.activo ? 'bg-[#e8f5d8] text-[#2d6a0d]' : 'bg-gray-100 text-gray-400'}`}>
-                          {socio.activo ? 'Activo' : 'Baja'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3">
-                        {socio.activo && (
-                          <button onClick={() => darDeBaja(socio.id)}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
-                            Dar de baja
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Socios</h1>
+          <p className="text-gray-500 mt-1">{socios.length} socios registrados</p>
         </div>
-      </main>
+        <button
+          onClick={() => setMostrarForm(!mostrarForm)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium"
+          style={{ backgroundColor: '#0f172a' }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {mostrarForm ? 'Cancelar' : 'Nuevo socio'}
+        </button>
+      </div>
+
+      {mostrarForm && (
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h2 className="md:col-span-2 font-semibold text-gray-800">Nuevo socio</h2>
+          {[
+            { key: 'nombre', label: 'Nombre completo', placeholder: 'Ej: Juan García López', required: true },
+            { key: 'dni', label: 'DNI', placeholder: 'Ej: 12345678A' },
+            { key: 'telefono', label: 'Teléfono', placeholder: 'Ej: 600000000' },
+            { key: 'email', label: 'Email', placeholder: 'Ej: juan@ejemplo.com', type: 'email' },
+          ].map(f => (
+            <div key={f.key}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
+              <input
+                type={f.type || 'text'}
+                placeholder={f.placeholder}
+                value={form[f.key]}
+                onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+                required={f.required}
+              />
+            </div>
+          ))}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+            <input
+              type="text" placeholder="Ej: Calle Mayor 1, Jaén"
+              value={form.direccion}
+              onChange={e => setForm({ ...form, direccion: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <button type="submit" disabled={loading} className="w-full py-2 px-4 rounded-lg text-white font-medium text-sm" style={{ backgroundColor: '#0f172a' }}>
+              {loading ? 'Guardando...' : 'Registrar socio'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {invitadoMsg && (
+        <div className={`mb-4 p-3 rounded-lg text-sm font-medium ${invitadoMsg.startsWith('✅') ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+          {invitadoMsg}
+        </div>
+      )}
+
+      <div className="mb-4">
+        <input
+          type="text" placeholder="Buscar por nombre, DNI o email..."
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg p-2.5 text-gray-900 text-sm bg-white shadow-sm"
+        />
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left px-5 py-3">Nombre</th>
+              <th className="text-left px-5 py-3">DNI</th>
+              <th className="text-left px-5 py-3">Teléfono</th>
+              <th className="text-left px-5 py-3">Email</th>
+              <th className="text-center px-5 py-3">Portal</th>
+              <th className="text-center px-5 py-3">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sociosFiltrados.map(s => (
+              <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
+                <td className="px-5 py-3 font-medium text-gray-900">{s.nombre}</td>
+                <td className="px-5 py-3 text-gray-600">{s.dni || '—'}</td>
+                <td className="px-5 py-3 text-gray-600">{s.telefono || '—'}</td>
+                <td className="px-5 py-3 text-gray-600">{s.email || '—'}</td>
+                <td className="px-5 py-3 text-center">
+                  <button
+                    onClick={() => handleInvitar(s)}
+                    disabled={invitando === s.id || !s.email}
+                    title={s.email ? `Enviar acceso al portal a ${s.email}` : 'El socio no tiene email'}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
+                    style={{
+                      backgroundColor: s.email ? 'rgba(74,222,128,0.12)' : '#f1f5f9',
+                      color: s.email ? '#16a34a' : '#94a3b8',
+                    }}
+                  >
+                    {invitando === s.id ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        {s.email ? 'Dar acceso' : 'Sin email'}
+                      </>
+                    )}
+                  </button>
+                </td>
+                <td className="px-5 py-3 text-center">
+                  <div className="flex gap-2 justify-center">
+                    <Link href={`/socios/${s.id}`} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs hover:bg-gray-200">
+                      Ver ficha
+                    </Link>
+                    <button onClick={() => handleEliminar(s.id)} className="bg-red-100 text-red-700 px-3 py-1 rounded-lg text-xs hover:bg-red-200">
+                      Eliminar
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {sociosFiltrados.length === 0 && (
+              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No hay socios registrados</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

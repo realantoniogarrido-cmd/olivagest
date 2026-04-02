@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Fondo blanco con sombra exterior sutil -->
+    <filter id="iconShadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="rgba(0,0,0,0.12)"/>
+    </filter>
+    <!-- Sombra oliva -->
+    <filter id="olivaShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="rgba(40,90,10,0.22)"/>
+    </filter>
+    <!-- Gradiente cuerpo oliva: verde vivo tech -->
+    <radialGradient id="olivaGrad" cx="36%" cy="28%" r="72%">
+      <stop offset="0%"   stop-color="#d4f0a0"/>
+      <stop offset="22%"  stop-color="#8ed63a"/>
+      <stop offset="60%"  stop-color="#4fa814"/>
+      <stop offset="100%" stop-color="#2a650a"/>
+    </radialGradient>
+    <!-- Brillo especular -->
+    <radialGradient id="specular" cx="30%" cy="22%" r="35%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.80)"/>
+      <stop offset="60%"  stop-color="rgba(255,255,255,0.15)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <!-- Gradiente hoja -->
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#a8e050"/>
+      <stop offset="100%" stop-color="#3d8c10"/>
+    </linearGradient>
+    <!-- Borde suave icono -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="rgba(0,0,0,0.07)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.03)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo blanco app icon -->
+  <rect width="512" height="512" rx="115" ry="115" fill="#ffffff" filter="url(#iconShadow)"/>
+  <!-- Borde hairline -->
+  <rect width="512" height="512" rx="115" ry="115" fill="none" stroke="url(#borderGrad)" stroke-width="1.5"/>
+
+  <!-- TALLO -->
+  <path d="M258 138 Q263 118 272 102"
+        stroke="#5a8c1a" stroke-width="9"
+        stroke-linecap="round" fill="none"/>
+
+  <!-- HOJA — limpia y elegante -->
+  <path d="M272 102 Q310 72 338 58 Q322 95 288 114 Q280 118 272 115 Z"
+        fill="url(#leafGrad)" opacity="0.95"/>
+  <!-- Nervio hoja -->
+  <path d="M274 112 Q305 88 336 61"
+        stroke="rgba(30,80,5,0.22)" stroke-width="2.5"
+        stroke-linecap="round" fill="none"/>
+
+  <!-- OLIVA — cuerpo principal -->
+  <g filter="url(#olivaShadow)">
+    <ellipse cx="256" cy="295" rx="90" ry="118" fill="url(#olivaGrad)"/>
+
+    <!-- Surco longitudinal sutil -->
+    <path d="M256 182 Q248 295 256 408"
+          stroke="rgba(20,60,5,0.13)" stroke-width="5"
+          stroke-linecap="round" fill="none"/>
+
+    <!-- Brillo especular -->
+    <ellipse cx="224" cy="248" rx="30" ry="44" fill="url(#specular)"/>
+
+    <!-- Reflejo pequeño secundario -->
+    <ellipse cx="238" cy="222" rx="11" ry="17"
+             fill="rgba(255,255,255,0.28)"/>
+  </g>
+
+</svg>
