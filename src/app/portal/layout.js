@@ -75,40 +75,64 @@ export default function PortalLayout({ children }) {
   }
 
   return (
-    <div className="flex flex-col min-h-screen max-w-lg mx-auto" style={{ backgroundColor: '#f8fafc' }}>
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10"
-        style={{ backgroundColor: '#0f172a' }}>
-        <div className="flex items-center gap-2.5">
-          <img src="/logo.png" alt="OlivaGest" className="w-8 h-8 rounded-lg" />
-          <div>
-            <p className="text-white font-bold text-sm leading-tight">OlivaGest</p>
-            {socioNombre && (
-              <p className="text-xs leading-tight" style={{ color: '#4ade80' }}>
-                Hola, {socioNombre}
-              </p>
-            )}
+    <div className="min-h-screen" style={{ backgroundColor: '#f8fafc' }}>
+      {/* Top bar — full width */}
+      <div className="sticky top-0 z-10" style={{ backgroundColor: '#0f172a' }}>
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="OlivaGest" className="w-8 h-8 rounded-lg" />
+            <div>
+              <p className="text-white font-bold text-sm leading-tight">OlivaGest</p>
+              {socioNombre && (
+                <p className="text-xs leading-tight" style={{ color: '#4ade80' }}>
+                  Hola, {socioNombre}
+                </p>
+              )}
+            </div>
           </div>
+
+          {/* Nav horizontal en desktop */}
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV.map(item => {
+              const active = pathname.startsWith(item.href)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: active ? 'rgba(74,222,128,0.15)' : 'transparent',
+                    color: active ? '#4ade80' : 'rgba(255,255,255,0.5)',
+                  }}
+                >
+                  {item.icon(active)}
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </nav>
+
+          <button
+            onClick={handleLogout}
+            className="text-xs px-3 py-1.5 rounded-lg transition-all"
+            style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f8717144' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
+          >
+            Salir
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs px-3 py-1.5 rounded-lg"
-          style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}
-        >
-          Salir
-        </button>
       </div>
 
       {/* Page content */}
-      <main className="flex-1 overflow-y-auto pb-24">
+      <main className="max-w-5xl mx-auto px-4 py-6 pb-28 md:pb-8">
         {children}
       </main>
 
-      {/* Bottom navigation */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto z-20"
+      {/* Bottom nav — solo en móvil */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 md:hidden"
         style={{ backgroundColor: '#0f172a', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        {/* Safe area for iOS */}
-        <div className="flex items-center justify-around px-2 pt-2 pb-safe"
+        <div className="flex items-center justify-around px-2 pt-2"
           style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           {NAV.map(item => {
             const active = pathname.startsWith(item.href)

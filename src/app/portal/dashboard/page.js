@@ -31,7 +31,7 @@ export default function PortalDashboard() {
     // Obtener todas las campañas del socio
     const { data: ents } = await supabase
       .from('entregas')
-      .select('campaña, kg')
+      .select('campana, kg_neto, kg_bruto')
       .eq('user_id', s.user_id)
       .eq('socio_id', s.id)
 
@@ -41,7 +41,7 @@ export default function PortalDashboard() {
     // Histórico: kg por campaña
     const hist = camps.map(c => ({
       campana: c,
-      kg: (ents || []).filter(e => e.campana === c).reduce((sum, e) => sum + (parseFloat(e.kg) || 0), 0),
+      kg: (ents || []).filter(e => e.campana === c).reduce((sum, e) => sum + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0),
     }))
     setHistorico(hist)
 
@@ -69,7 +69,7 @@ export default function PortalDashboard() {
     setLoading(false)
   }
 
-  const totalKg     = entregas.reduce((s, e) => s + (parseFloat(e.kg) || 0), 0)
+  const totalKg     = entregas.reduce((s, e) => s + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0)
   const kgAceite    = liquidacion?.kg_aceite_final
     ? parseFloat(liquidacion.kg_aceite_final)
     : totalKg * ((parseFloat(liquidacion?.rendimiento_neto) || 20) / 100)
