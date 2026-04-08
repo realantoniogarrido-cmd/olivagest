@@ -35,13 +35,13 @@ export default function PortalDashboard() {
       .eq('user_id', s.user_id)
       .eq('socio_id', s.id)
 
-    const camps = [...new Set((ents || []).map(e => e.campaña).filter(Boolean))].sort().reverse()
+    const camps = [...new Set((ents || []).map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
 
     // Histórico: kg por campaña
     const hist = camps.map(c => ({
-      campaña: c,
-      kg: (ents || []).filter(e => e.campaña === c).reduce((sum, e) => sum + (parseFloat(e.kg) || 0), 0),
+      campana: c,
+      kg: (ents || []).filter(e => e.campana === c).reduce((sum, e) => sum + (parseFloat(e.kg) || 0), 0),
     }))
     setHistorico(hist)
 
@@ -56,12 +56,12 @@ export default function PortalDashboard() {
         .select('*')
         .eq('user_id', socio.user_id)
         .eq('socio_id', socio.id)
-        .eq('campaña', campActual),
+        .eq('campana', campActual),
       supabase.from('liquidaciones')
         .select('*')
         .eq('user_id', socio.user_id)
         .eq('socio_id', socio.id)
-        .eq('campaña', campActual)
+        .eq('campana', campActual)
         .single(),
     ])
     setEntregas(ents || [])
@@ -199,10 +199,10 @@ export default function PortalDashboard() {
                   const max = Math.max(...historico.map(x => x.kg))
                   const pct = max > 0 ? (h.kg / max) * 100 : 0
                   return (
-                    <div key={h.campaña}>
+                    <div key={h.campana}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className={`font-medium ${h.campaña === campActual ? 'text-green-600' : 'text-gray-600'}`}>
-                          {h.campaña} {h.campaña === campActual && '← actual'}
+                        <span className={`font-medium ${h.campana === campActual ? 'text-green-600' : 'text-gray-600'}`}>
+                          {h.campana} {h.campana === campActual && '← actual'}
                         </span>
                         <span className="text-gray-400">
                           {h.kg >= 1000
@@ -215,7 +215,7 @@ export default function PortalDashboard() {
                           className="h-full rounded-full transition-all"
                           style={{
                             width: `${pct}%`,
-                            backgroundColor: h.campaña === campActual ? '#4ade80' : '#cbd5e1',
+                            backgroundColor: h.campana === campActual ? '#4ade80' : '#cbd5e1',
                           }}
                         />
                       </div>

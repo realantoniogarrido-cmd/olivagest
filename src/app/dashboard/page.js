@@ -40,11 +40,11 @@ export default function DashboardPage() {
       supabase.from('socios').select('id, nombre').eq('user_id', userId),
       supabase.from('parcelas').select('id, socio_id').eq('user_id', userId),
       supabase.from('entregas')
-        .select('id, socio_id, kg, rendimiento, calidad, campaña, fecha, created_at')
+        .select('id, socio_id, kg, rendimiento, calidad, campana, fecha, created_at')
         .eq('user_id', userId)
         .order('fecha', { ascending: false }),
       supabase.from('liquidaciones')
-        .select('id, socio_id, campaña, kg_totales, kg_aceite_final, rendimiento_neto, precio_kg, importe_total, estado, fecha_pago')
+        .select('id, socio_id, campana, kg_totales, kg_aceite_final, rendimiento_neto, precio_kg, importe_total, estado, fecha_pago')
         .eq('user_id', userId),
     ])
 
@@ -54,15 +54,15 @@ export default function DashboardPage() {
     setLiquidaciones(l || [])
 
     // Campanyas únicas ordenadas desc
-    const camps = [...new Set((e || []).map(x => x.campaña).filter(Boolean))].sort().reverse()
+    const camps = [...new Set((e || []).map(x => x.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
     if (camps.length > 0) setCampSeleccionada(camps[0])
     setLoading(false)
   }
 
   // ── Datos filtrados por campaña ────────────────────────────
-  const entCamp  = campSeleccionada ? entregas.filter(e => e.campaña === campSeleccionada) : entregas
-  const liqCamp  = campSeleccionada ? liquidaciones.filter(l => l.campaña === campSeleccionada) : liquidaciones
+  const entCamp  = campSeleccionada ? entregas.filter(e => e.campana === campSeleccionada) : entregas
+  const liqCamp  = campSeleccionada ? liquidaciones.filter(l => l.campana === campSeleccionada) : liquidaciones
 
   const totalKg      = entCamp.reduce((s, e) => s + (parseFloat(e.kg) || 0), 0)
   const totalImporte = liqCamp.reduce((s, l) => s + (parseFloat(l.importe_total) || 0), 0)
@@ -365,7 +365,7 @@ export default function DashboardPage() {
               return (
                 <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-gray-900">{socio?.nombre || '—'}</td>
-                  <td className="px-5 py-3 text-gray-500 text-xs">{e.campaña || '—'}</td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">{e.campana || '—'}</td>
                   <td className="px-5 py-3 text-gray-500">{fecha ? new Date(fecha).toLocaleDateString('es-ES') : '—'}</td>
                   <td className="px-5 py-3 text-right text-gray-700">{fmt(e.kg)} kg</td>
                   <td className="px-5 py-3 text-right text-gray-500">{e.rendimiento ? `${e.rendimiento}%` : '—'}</td>

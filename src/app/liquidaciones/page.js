@@ -2,6 +2,122 @@
 import { useState, useEffect } from 'react'
 import { supabase, getUserId } from '@/lib/supabase'
 
+// ── Carga dinámica jsPDF ───────────────────────────────────────
+async function loadJsPDF() {
+  if (window.jspdf) return window.jspdf.jsPDF
+  await new Promise((res, rej) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+    s.onload = res; s.onerror = rej; document.head.appendChild(s)
+  })
+  await new Promise((res, rej) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js'
+    s.onload = res; s.onerror = rej; document.head.appendChild(s)
+  })
+  return window.jspdf.jsPDF
+}
+
+// ── Genera PDF de liquidación para un socio ───────────────────
+function generarPDFLiquidacion(socio, liq, entregas, campana) {
+  const { jsPDF } = window.jspdf
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W = 210, M = 18
+  let y = 0
+
+  // Cabecera navy
+  doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 42, 'F')
+  doc.setFillColor(74, 222, 128); doc.rect(0, 0, 5, 42, 'F')
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(255, 255, 255)
+  doc.text('OlivaGest', M, 16)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(74, 222, 128)
+  doc.text('Gestión oleícola cooperativa', M, 22)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(255, 255, 255)
+  doc.text('LIQUIDACIÓN DE CAMPAÑA', M, 33)
+  doc.setFontSize(11); doc.setTextColor(74, 222, 128)
+  doc.text(`Campaña ${campana}`, W - M, 33, { align: 'right' })
+  y = 52
+
+  // Datos socio
+  doc.setFillColor(248, 250, 252); doc.roundedRect(M, y, W - M * 2, 36, 3, 3, 'F')
+  doc.setDrawColor(226, 232, 240); doc.roundedRect(M, y, W - M * 2, 36, 3, 3, 'S')
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(100, 116, 139)
+  doc.text('DATOS DEL SOCIO', M + 5, y + 7)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(15, 23, 42)
+  doc.text(socio.nombre || '—', M + 5, y + 16)
+  const c2 = W / 2 + 5
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
+  if (socio.dni) { doc.setTextColor(100,116,139); doc.text('DNI/NIF:', M+5, y+24); doc.setTextColor(15,23,42); doc.text(socio.dni, M+18, y+24) }
+  if (socio.telefono) { doc.setTextColor(100,116,139); doc.text('Tel:', M+5, y+30); doc.setTextColor(15,23,42); doc.text(socio.telefono, M+13, y+30) }
+  if (socio.municipio) { doc.setTextColor(100,116,139); doc.text('Municipio:', c2, y+24); doc.setTextColor(15,23,42); doc.text(socio.municipio, c2+20, y+24) }
+  if (socio.iban) { doc.setTextColor(100,116,139); doc.text('IBAN:', c2, y+30); doc.setTextColor(15,23,42); doc.text(socio.iban, c2+11, y+30) }
+  y += 44
+
+  // Resumen liquidación
+  const rb = parseFloat(liq.rendimiento_bruto)||0, pe = parseFloat(liq.punto_extraccion)||0
+  const rn = Math.max(0, rb - pe)
+  const kgAceite = parseFloat(liq.kg_aceite_final) || (parseFloat(liq.kg_totales)*rn/100)
+  const kgT = parseFloat(liq.kg_totales)||0
+  const imp = parseFloat(liq.importe_total)||0
+  const pKg = parseFloat(liq.precio_kg)||0
+
+  const kpis = [
+    { l: 'Kg aceituna', v: `${kgT.toLocaleString('es-ES')} kg` },
+    { l: 'Rendimiento neto', v: rn > 0 ? `${rn.toFixed(1)}%` : '—' },
+    { l: 'Kg aceite', v: kgAceite > 0 ? `${kgAceite.toLocaleString('es-ES',{maximumFractionDigits:1})} kg` : '—' },
+    { l: 'Precio/kg aceite', v: pKg > 0 ? `${pKg.toFixed(3)} €/kg` : '—' },
+  ]
+  const boxW = (W - M*2 - 9) / 4
+  kpis.forEach((k, i) => {
+    const bx = M + i*(boxW+3)
+    doc.setFillColor(15,23,42); doc.roundedRect(bx, y, boxW, 22, 2, 2, 'F')
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(148,163,184)
+    doc.text(k.l, bx+4, y+8)
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(255,255,255)
+    doc.text(k.v, bx+4, y+17)
+  })
+  y += 30
+
+  // Importe total destacado
+  doc.setFillColor(240,253,244); doc.roundedRect(M, y, W-M*2, 16, 3, 3, 'F')
+  doc.setDrawColor(134,239,172); doc.roundedRect(M, y, W-M*2, 16, 3, 3, 'S')
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(22,101,52)
+  doc.text('IMPORTE TOTAL A PERCIBIR', M+5, y+7)
+  doc.setFontSize(14); doc.setTextColor(22,101,52)
+  doc.text(`${imp.toLocaleString('es-ES',{style:'currency',currency:'EUR'})}`, W-M, y+10, {align:'right'})
+  y += 24
+
+  // Tabla entregas
+  if (entregas?.length > 0) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,23,42)
+    doc.text('DETALLE DE ENTREGAS', M, y); y += 4
+    doc.autoTable({
+      startY: y,
+      margin: { left: M, right: M },
+      head: [['Fecha','Parcela','Calidad','Kg bruto','Rendim.']],
+      body: entregas.map(e => [
+        e.fecha ? new Date(e.fecha).toLocaleDateString('es-ES') : '—',
+        e.parcelas?.nombre || '—',
+        e.calidad || '—',
+        `${parseFloat(e.kg_bruto||0).toLocaleString('es-ES')} kg`,
+        e.rendimiento ? `${e.rendimiento}%` : '—',
+      ]),
+      headStyles: { fillColor: [15,23,42], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: [30,41,59] },
+      alternateRowStyles: { fillColor: [248,250,252] },
+      columnStyles: { 0:{cellWidth:28}, 1:{cellWidth:50}, 2:{cellWidth:22}, 3:{cellWidth:30}, 4:{cellWidth:22} },
+    })
+    y = doc.lastAutoTable.finalY + 8
+  }
+
+  // Pie
+  doc.setFillColor(15,23,42); doc.rect(0, 285, W, 12, 'F')
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(148,163,184)
+  doc.text(`Generado por OlivaGest · ${new Date().toLocaleDateString('es-ES')}`, W/2, 292, {align:'center'})
+
+  return doc.output('datauristring').split(',')[1] // base64
+}
+
 // ── Helpers de estado ──────────────────────────────────────────
 const ESTADOS = {
   borrador:       { label: 'Borrador',      bg: '#f1f5f9', color: '#64748b', dot: '#94a3b8' },
@@ -46,13 +162,13 @@ export default function LiquidacionesPage() {
   const [mensaje, setMensaje] = useState('')
 
   // Formulario manual
-  const emptyForm = { socio_id: '', campaña: '', kg_totales: '', rendimiento_bruto: '', punto_extraccion: '', precio_kg: '', importe_total: '' }
+  const emptyForm = { socio_id: '', campana: '', kg_totales: '', rendimiento_bruto: '', punto_extraccion: '', precio_kg: '', importe_total: '' }
   const [form, setForm] = useState(emptyForm)
 
   // Auto-liquidación
   const [modoAuto, setModoAuto] = useState(false)
   const [campanyas, setCampanyas] = useState([])
-  const [autoForm, setAutoForm] = useState({ campaña: '', precio_kg: '', rendimiento_bruto: '', punto_extraccion: '' })
+  const [autoForm, setAutoForm] = useState({ campana: '', precio_kg: '', rendimiento_bruto: '', punto_extraccion: '' })
   const [autoPreview, setAutoPreview] = useState(null)
   const [autoLoading, setAutoLoading] = useState(false)
   const [generando, setGenerando] = useState(false)
@@ -92,8 +208,9 @@ export default function LiquidacionesPage() {
 
   async function fetchCampanyas() {
     const userId = await getUserId()
-    const { data } = await supabase.from('entregas').select('campaña').eq('user_id', userId)
-    const camps = [...new Set((data || []).map(e => e.campaña).filter(Boolean))].sort().reverse()
+    // select('*') para evitar bug silencioso de ñ en lista explícita de columnas
+    const { data } = await supabase.from('entregas').select('*').eq('user_id', userId)
+    const camps = [...new Set((data || []).map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
   }
 
@@ -105,7 +222,7 @@ export default function LiquidacionesPage() {
     await supabase.from('liquidaciones').insert([{
       user_id: userId,
       socio_id: form.socio_id,
-      campaña: form.campaña,
+      campana: form.campana,
       kg_totales: form.kg_totales,
       rendimiento_bruto: form.rendimiento_bruto || null,
       punto_extraccion: form.punto_extraccion || null,
@@ -141,28 +258,60 @@ export default function LiquidacionesPage() {
     if (!socio?.email) { alert('Este socio no tiene email registrado.'); return }
     setEmailLoading(liq.id)
     try {
+      // 1. Cargar jsPDF
+      await loadJsPDF()
+
+      // 2. Obtener entregas del socio para esta campaña
+      const userId = await getUserId()
+      const { data: entregasSocio } = await supabase
+        .from('entregas')
+        .select('*, parcelas(nombre)')
+        .eq('user_id', userId)
+        .eq('socio_id', liq.socio_id)
+        .eq('campana', liq.campana)
+        .order('fecha', { ascending: true })
+
+      // 3. Generar PDF
+      const pdfBase64 = generarPDFLiquidacion(socio, liq, entregasSocio || [], liq.campana)
+      const pdfFilename = `Liquidacion_${liq.campana}_${(socio.nombre || '').replace(/[^a-z0-9]/gi, '_')}.pdf`
+
+      // 4. Enviar email con PDF adjunto
+      const adminEmail = (await supabase.auth.getSession()).data.session?.user?.email || ''
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           socioNombre: liq.socios?.nombre || socio.nombre,
           socioEmail: socio.email,
+          adminEmail,
           kg: liq.kg_totales,
           importe: liq.importe_total,
-          campaña: liq.campaña,
+          campana: liq.campana,
           fecha: new Date(liq.created_at).toLocaleDateString('es-ES'),
+          rendimientoBruto: liq.rendimiento_bruto,
+          puntoExtraccion: liq.punto_extraccion,
+          kgAceite: liq.kg_aceite_final,
+          precioKg: liq.precio_kg,
+          pdfBase64,
+          pdfFilename,
         }),
       })
       const result = await res.json()
-      setMensaje(result.success ? `✅ Email enviado a ${socio.email}` : '❌ Error al enviar el email')
-    } catch { setMensaje('❌ Error de conexión') }
-    setTimeout(() => setMensaje(''), 4000)
+      if (result.success && result.testMode) {
+        setMensaje(`✅ Email redirigido a tu email (modo prueba) — destino real: ${socio.email}`)
+      } else if (result.success) {
+        setMensaje(`✅ Email enviado a ${socio.email}`)
+      } else {
+        setMensaje(`❌ ${result.error?.message || result.error || 'Error al enviar el email'}`)
+      }
+    } catch (err) { setMensaje(`❌ Error: ${err.message || 'Error de conexión'}`) }
+    setTimeout(() => setMensaje(''), 5000)
     setEmailLoading(null)
   }
 
   // ---- AUTO-LIQUIDACIÓN ----
   async function calcularAuto() {
-    if (!autoForm.campaña || !autoForm.precio_kg) return
+    if (!autoForm.campana || !autoForm.precio_kg) return
     setAutoLoading(true); setAutoPreview(null)
     const userId = await getUserId()
     const precioPorKg = parseFloat(autoForm.precio_kg)
@@ -171,13 +320,13 @@ export default function LiquidacionesPage() {
 
     const { data: entregas } = await supabase
       .from('entregas')
-      .select('socio_id, kg_neto, kg, socios(nombre)')
+      .select('*, socios(nombre)')
       .eq('user_id', userId)
-      .eq('campaña', autoForm.campaña)
+      .eq('campana', autoForm.campana)
 
     const { data: yaLiquidadas } = await supabase
       .from('liquidaciones').select('socio_id')
-      .eq('user_id', userId).eq('campaña', autoForm.campaña)
+      .eq('user_id', userId).eq('campana', autoForm.campana)
 
     const sociosYaLiquidados = new Set((yaLiquidadas || []).map(l => l.socio_id))
 
@@ -186,7 +335,7 @@ export default function LiquidacionesPage() {
       if (!porSocio[e.socio_id]) {
         porSocio[e.socio_id] = { socio_id: e.socio_id, nombre: e.socios?.nombre || '—', kg: 0 }
       }
-      porSocio[e.socio_id].kg += parseFloat(e.kg_neto || e.kg || 0)
+      porSocio[e.socio_id].kg += parseFloat(e.kg_neto || e.kg_bruto || 0)
     }
 
     const preview = Object.values(porSocio).map(s => {
@@ -220,14 +369,13 @@ export default function LiquidacionesPage() {
       .map(s => ({
         user_id: userId,
         socio_id: s.socio_id,
-        campaña: autoForm.campaña,
-        kg_totales: s.kg.toFixed(2),
+        'campana': autoForm.campana,
+        kg_totales: parseFloat(s.kg.toFixed(2)),
         rendimiento_bruto: rb || null,
         punto_extraccion: pe || null,
-        rendimiento_neto: rb > 0 ? rn.toFixed(2) : null,
-        kg_aceite_final: s.kgAceite ? s.kgAceite.toFixed(2) : null,
+        rendimiento_neto: rb > 0 ? parseFloat(rn.toFixed(2)) : null,
         precio_kg: precioPorKg,
-        importe_total: s.importe,
+        importe_total: parseFloat(s.importe),
         estado: 'borrador',
       }))
 
@@ -239,11 +387,11 @@ export default function LiquidacionesPage() {
 
     const { error } = await supabase.from('liquidaciones').insert(nuevas)
     if (error) {
-      setMensaje('❌ Error al generar liquidaciones')
+      setMensaje(`❌ ${error.message}`)
     } else {
       setMensaje(`✅ ${nuevas.length} liquidaciones generadas`)
       setAutoPreview(null)
-      setAutoForm({ campaña: '', precio_kg: '', rendimiento_bruto: '', punto_extraccion: '' })
+      setAutoForm({ campana: '', precio_kg: '', rendimiento_bruto: '', punto_extraccion: '' })
       setModoAuto(false)
       fetchLiquidaciones()
     }
@@ -253,7 +401,7 @@ export default function LiquidacionesPage() {
 
   // ── Datos derivados ───────────────────────────────────────────
   const liqFiltradas = liquidaciones.filter(l => {
-    if (filtroCampaña && l.campaña !== filtroCampaña) return false
+    if (filtroCampaña && l.campana !== filtroCampaña) return false
     if (filtroEstado && (l.estado || 'borrador') !== filtroEstado) return false
     return true
   })
@@ -340,8 +488,8 @@ export default function LiquidacionesPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Campaña *</label>
                 <select
-                  value={autoForm.campaña}
-                  onChange={e => { setAutoForm({ ...autoForm, campaña: e.target.value }); setAutoPreview(null) }}
+                  value={autoForm.campana}
+                  onChange={e => { setAutoForm({ ...autoForm, campana: e.target.value }); setAutoPreview(null) }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900"
                 >
                   <option value="">Seleccionar...</option>
@@ -401,7 +549,7 @@ export default function LiquidacionesPage() {
 
             <button
               onClick={calcularAuto}
-              disabled={autoLoading || !autoForm.campaña || !autoForm.precio_kg}
+              disabled={autoLoading || !autoForm.campana || !autoForm.precio_kg}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40 mb-4"
               style={{ backgroundColor: '#0f172a' }}
             >
@@ -464,7 +612,7 @@ export default function LiquidacionesPage() {
 
                 {autoPreview.length === 0 ? (
                   <p className="text-sm text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-3">
-                    ⚠️ No hay entregas en la campaña <strong>{autoForm.campaña}</strong>.
+                    ⚠️ No hay entregas en la campaña <strong>{autoForm.campana}</strong>.
                   </p>
                 ) : nuevasPrevio.length === 0 ? (
                   <p className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-3">
@@ -502,7 +650,7 @@ export default function LiquidacionesPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Campaña</label>
-              <input type="text" placeholder="Ej: 2024/2025" value={form.campaña} onChange={e => setForm({ ...form, campaña: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" required />
+              <input type="text" placeholder="Ej: 2024/2025" value={form.campana} onChange={e => setForm({ ...form, campana: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm" required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Kg totales aceituna</label>
@@ -572,7 +720,7 @@ export default function LiquidacionesPage() {
             {liqFiltradas.map(liq => (
               <tr key={liq.id} className="border-t border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-3 font-medium text-gray-900">{liq.socios?.nombre}</td>
-                <td className="px-5 py-3 text-gray-600">{liq.campaña}</td>
+                <td className="px-5 py-3 text-gray-600">{liq.campana}</td>
                 <td className="px-5 py-3 text-right text-gray-700">
                   {parseFloat(liq.kg_totales).toLocaleString('es-ES', { maximumFractionDigits: 0 })} kg
                 </td>
@@ -599,12 +747,22 @@ export default function LiquidacionesPage() {
                   )}
                 </td>
                 <td className="px-5 py-3 text-center">
-                  <div className="flex gap-1.5 justify-center">
-                    <button onClick={() => handleEnviarEmail(liq)} disabled={emailLoading === liq.id} className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg text-xs hover:bg-blue-100 disabled:opacity-50">
-                      {emailLoading === liq.id ? '...' : '📧'}
+                  <div className="flex gap-1.5 justify-center items-center">
+                    <button
+                      onClick={() => handleEnviarEmail(liq)}
+                      disabled={emailLoading === liq.id}
+                      title="Enviar liquidación por email"
+                      className="p-1.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-40">
+                      {emailLoading === liq.id
+                        ? <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                        : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      }
                     </button>
-                    <button onClick={() => handleEliminar(liq.id)} className="bg-red-50 text-red-600 px-2.5 py-1 rounded-lg text-xs hover:bg-red-100">
-                      ✕
+                    <button
+                      onClick={() => handleEliminar(liq.id)}
+                      title="Eliminar liquidación"
+                      className="p-1.5 rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   </div>
                 </td>

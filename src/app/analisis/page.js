@@ -87,7 +87,7 @@ export default function AnalisisPage() {
       total_liquidaciones: liqsArr.length,
       importe_total: liqsArr.reduce((s, l) => s + parseFloat(l.importe_total || 0), 0),
       precio_medio: liqsArr.length ? (liqsArr.reduce((s, l) => s + parseFloat(l.precio_kg || 0), 0) / liqsArr.length).toFixed(3) : null,
-      precios_historicos: liqsArr.map(l => ({ campaña: l.campaña, precio_kg: parseFloat(l.precio_kg), kg: parseFloat(l.kg_totales), importe: parseFloat(l.importe_total) })),
+      precios_historicos: liqsArr.map(l => ({ campana: l.campana, precio_kg: parseFloat(l.precio_kg), kg: parseFloat(l.kg_totales), importe: parseFloat(l.importe_total) })),
       campanyas: (campanyas || []).map(c => ({ nombre: c.nombre, estado: c.estado, precio_kg: c.precio_kg })),
       region: 'Jaén, Andalucía, España',
       año_actual: new Date().getFullYear(),

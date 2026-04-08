@@ -45,8 +45,8 @@ export default function InformesPage() {
     setSocios(sData || [])
     // Obtener campañas únicas
     const { data: eData } = await supabase
-      .from('entregas').select('campaña').eq('user_id', userId)
-    const camps = [...new Set((eData || []).map(e => e.campaña).filter(Boolean))].sort().reverse()
+      .from('entregas').select('campana').eq('user_id', userId)
+    const camps = [...new Set((eData || []).map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
     if (camps.length > 0) setCampaniaSeleccionada(camps[0])
   }
@@ -60,7 +60,7 @@ export default function InformesPage() {
       .from('entregas')
       .select('*, parcelas(nombre, variedad)')
       .eq('user_id', userId)
-      .eq('campaña', campania)
+      .eq('campana', campania)
       .order('fecha', { ascending: true })
 
     // Liquidaciones
@@ -68,7 +68,7 @@ export default function InformesPage() {
       .from('liquidaciones')
       .select('*')
       .eq('user_id', userId)
-      .eq('campaña', campania)
+      .eq('campana', campania)
 
     // Parcelas
     const { data: parcelas } = await supabase

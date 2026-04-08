@@ -6,12 +6,13 @@ export default function EntregasPage() {
   const [entregas, setEntregas] = useState([])
   const [socios, setSocios] = useState([])
   const [parcelas, setParcelas] = useState([])
-  const [form, setForm] = useState({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' })
+  const [campanyaActiva, setCampanyaActiva] = useState('')
+  const [form, setForm] = useState({ socio_id: '', parcela_id: '', kg_bruto: '', rendimiento: '', calidad: 'Primera', campana: '', notas: '' })
   const [loading, setLoading] = useState(false)
   const [editando, setEditando] = useState(null)
   const [mostrarForm, setMostrarForm] = useState(false)
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo(); fetchCampanyaActiva() }, [])
 
   async function fetchTodo() {
     const userId = await getUserId()
@@ -23,6 +24,15 @@ export default function EntregasPage() {
     setEntregas(e || [])
     setSocios(s || [])
     setParcelas(p || [])
+  }
+
+  async function fetchCampanyaActiva() {
+    const userId = await getUserId()
+    const { data } = await supabase.from('campanyas').select('nombre').eq('user_id', userId).eq('estado', 'activa').limit(1).single()
+    if (data?.nombre) {
+      setCampanyaActiva(data.nombre)
+      setForm(f => ({ ...f, 'campana': data.nombre }))
+    }
   }
 
   // Parcelas filtradas según socio seleccionado en el form
@@ -37,10 +47,10 @@ export default function EntregasPage() {
     const datos = {
       socio_id: form.socio_id,
       parcela_id: form.parcela_id || null,
-      kg: form.kg,
+      kg_bruto: form.kg_bruto,
       rendimiento: form.rendimiento || null,
       calidad: form.calidad,
-      campaña: form.campaña || null,
+      campana: form.campana || null,
       notas: form.notas || null,
     }
     if (editando) {
@@ -49,7 +59,7 @@ export default function EntregasPage() {
     } else {
       await supabase.from('entregas').insert([{ ...datos, user_id: userId }])
     }
-    setForm({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' })
+    setForm({ socio_id: '', parcela_id: '', kg_bruto: '', rendimiento: '', calidad: 'Primera', campana: campanyaActiva || '', notas: '' })
     setMostrarForm(false)
     fetchTodo()
     setLoading(false)
@@ -59,10 +69,10 @@ export default function EntregasPage() {
     setForm({
       socio_id: entrega.socio_id,
       parcela_id: entrega.parcela_id || '',
-      kg: entrega.kg,
+      kg_bruto: entrega.kg_bruto,
       rendimiento: entrega.rendimiento || '',
       calidad: entrega.calidad || 'Primera',
-      campaña: entrega.campaña || '',
+      campana: entrega.campana || '',
       notas: entrega.notas || '',
     })
     setEditando(entrega.id)
@@ -75,7 +85,7 @@ export default function EntregasPage() {
     fetchTodo()
   }
 
-  const totalKg = entregas.reduce((s, e) => s + parseFloat(e.kg || 0), 0)
+  const totalKg = entregas.reduce((s, e) => s + parseFloat(e.kg_bruto || 0), 0)
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -85,7 +95,7 @@ export default function EntregasPage() {
           <p className="text-gray-500 mt-1">{entregas.length} entregas · {totalKg.toLocaleString('es-ES')} kg totales</p>
         </div>
         <button
-          onClick={() => { setMostrarForm(!mostrarForm); setEditando(null); setForm({ socio_id: '', parcela_id: '', kg: '', rendimiento: '', calidad: 'Primera', campaña: '', notas: '' }) }}
+          onClick={() => { setMostrarForm(!mostrarForm); setEditando(null); setForm({ socio_id: '', parcela_id: '', kg_bruto: '', rendimiento: '', calidad: 'Primera', campana: campanyaActiva || '', notas: '' }) }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium"
           style={{ backgroundColor: '#0f172a' }}
         >
@@ -134,13 +144,27 @@ export default function EntregasPage() {
 
           {/* Campaña */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Campaña</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Campaña
+              {campanyaActiva && form.campana === campanyaActiva && (
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
+                  ✓ Activa
+                </span>
+              )}
+            </label>
             <input
               type="text" placeholder="Ej: 2024/2025"
-              value={form.campaña}
-              onChange={e => setForm({ ...form, campaña: e.target.value })}
+              value={form.campana}
+              onChange={e => setForm({ ...form, campana: e.target.value })}
               className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
             />
+            {campanyaActiva && form.campana !== campanyaActiva && (
+              <button type="button"
+                onClick={() => setForm(f => ({ ...f, campana: campanyaActiva }))}
+                className="text-xs text-blue-600 mt-1 hover:underline">
+                ← Volver a campaña activa: {campanyaActiva}
+              </button>
+            )}
           </div>
 
           {/* Kg */}
@@ -148,8 +172,8 @@ export default function EntregasPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Kg bruto <span className="text-red-500">*</span></label>
             <input
               type="number" step="0.1" placeholder="0"
-              value={form.kg}
-              onChange={e => setForm({ ...form, kg: e.target.value })}
+              value={form.kg_bruto}
+              onChange={e => setForm({ ...form, kg_bruto: e.target.value })}
               className="w-full border border-gray-300 rounded-lg p-2 text-gray-900 text-sm"
               required
             />
@@ -218,9 +242,9 @@ export default function EntregasPage() {
               <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-3 font-medium text-gray-900">{e.socios?.nombre}</td>
                 <td className="px-5 py-3 text-gray-500 text-xs">{e.parcelas?.nombre || <span className="text-gray-300">—</span>}</td>
-                <td className="px-5 py-3 text-gray-600">{e.campaña || '—'}</td>
+                <td className="px-5 py-3 text-gray-600">{e.campana || '—'}</td>
                 <td className="px-5 py-3 text-gray-500">{new Date(e.created_at).toLocaleDateString('es-ES')}</td>
-                <td className="px-5 py-3 text-right font-medium text-gray-900">{parseFloat(e.kg || 0).toLocaleString('es-ES')} kg</td>
+                <td className="px-5 py-3 text-right font-medium text-gray-900">{parseFloat(e.kg_bruto || 0).toLocaleString('es-ES')} kg</td>
                 <td className="px-5 py-3 text-right text-gray-600">{e.rendimiento ? `${e.rendimiento}%` : '—'}</td>
                 <td className="px-5 py-3">
                   {e.calidad ? (

@@ -35,13 +35,13 @@ export default function PortalEntregas() {
     const ents = data || []
     setEntregas(ents)
 
-    const camps = [...new Set(ents.map(e => e.campaña).filter(Boolean))].sort().reverse()
+    const camps = [...new Set(ents.map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
     if (camps.length > 0) setCampFiltro(camps[0])
     setLoading(false)
   }
 
-  const filtradas = campFiltro ? entregas.filter(e => e.campaña === campFiltro) : entregas
+  const filtradas = campFiltro ? entregas.filter(e => e.campana === campFiltro) : entregas
   const totalKg   = filtradas.reduce((s, e) => s + (parseFloat(e.kg) || 0), 0)
 
   return (
@@ -133,8 +133,8 @@ export default function PortalEntregas() {
                           ? new Date(fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
                           : '—'}
                       </p>
-                      {e.campaña && (
-                        <p className="text-xs text-gray-300 mt-0.5">{e.campaña}</p>
+                      {e.campana && (
+                        <p className="text-xs text-gray-300 mt-0.5">{e.campana}</p>
                       )}
                     </div>
                   </div>

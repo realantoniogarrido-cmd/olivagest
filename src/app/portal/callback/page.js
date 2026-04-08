@@ -7,33 +7,60 @@ export default function PortalCallback() {
   const router = useRouter()
 
   useEffect(() => {
-    // Supabase handles the token from the URL hash automatically.
-    // We just wait for the session to settle and then redirect.
+    let done = false
+
+    function goTo(path) {
+      if (done) return
+      done = true
+      router.replace(path)
+    }
+
+    // ── Escuchar PRIMERO (síncrono) ────────────────────────────
+    // Supabase procesa el #access_token del hash al inicializar
+    // y dispara SIGNED_IN. Si lo configuramos antes que cualquier
+    // operación async, no nos perdemos el evento.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        router.replace('/portal/dashboard')
-      } else if (event === 'SIGNED_OUT') {
-        router.replace('/portal')
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+        goTo('/portal/dashboard')
       }
     })
 
-    // Also check immediately in case session is already set
+    // ── Comprobar sesión ya existente ──────────────────────────
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/portal/dashboard')
+      if (session) goTo('/portal/dashboard')
     })
 
-    return () => subscription.unsubscribe()
+    // ── Flujo PKCE: ?code=xxx ──────────────────────────────────
+    const code = new URLSearchParams(window.location.search).get('code')
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        // Si hay error, onAuthStateChange no disparará → redirigir a login
+        if (error) goTo('/portal')
+        // Si va bien, onAuthStateChange dispara SIGNED_IN → goTo('/portal/dashboard')
+      })
+    }
+
+    // ── Timeout de seguridad (8s) ──────────────────────────────
+    const timeout = setTimeout(() => goTo('/portal'), 8000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0f172a' }}>
-      <div className="text-center">
-        <svg className="animate-spin h-10 w-10 mx-auto mb-4" fill="none" viewBox="0 0 24 24" style={{ color: '#4ade80' }}>
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
-        <p className="text-white font-medium">Verificando acceso...</p>
-      </div>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4"
+      style={{ backgroundColor: '#0f172a' }}>
+      <svg className="animate-spin h-10 w-10" fill="none" viewBox="0 0 24 24"
+        style={{ color: '#4ade80' }}>
+        <circle className="opacity-25" cx="12" cy="12" r="10"
+          stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+      </svg>
+      <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
+        Verificando acceso…
+      </p>
     </div>
   )
 }

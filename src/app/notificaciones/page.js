@@ -47,7 +47,7 @@ export default function NotificacionesPage() {
 
     const campanyaActiva = (campanyas || []).find(c => c.estado === 'activa')
     if (campanyaActiva && socios?.length > 0) {
-      const entregasCampaña = (entregas || []).filter(e => e.campaña === campanyaActiva.nombre)
+      const entregasCampaña = (entregas || []).filter(e => e.campana === campanyaActiva.nombre)
       const sociosConEntregaCampaña = new Set(entregasCampaña.map(e => e.socio_id))
       const sinEntregas = (socios || []).filter(s => !sociosConEntregaCampaña.has(s.id))
       if (sinEntregas.length > 0) {

@@ -30,8 +30,8 @@ export default function ExportarPage() {
 
   async function cargarCampanyas() {
     const userId = await getUserId()
-    const { data } = await supabase.from('entregas').select('campaña').eq('user_id', userId)
-    const camps = [...new Set((data || []).map(e => e.campaña).filter(Boolean))].sort().reverse()
+    const { data } = await supabase.from('entregas').select('campana').eq('user_id', userId)
+    const camps = [...new Set((data || []).map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
   }
 
@@ -67,12 +67,12 @@ export default function ExportarPage() {
         .select('*, socios(nombre), parcelas(nombre)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-      if (filtroCampaña) query = query.eq('campaña', filtroCampaña)
+      if (filtroCampaña) query = query.eq('campana', filtroCampaña)
       const { data } = await query
       datos = (data || []).map(e => ({
         'Socio': e.socios?.nombre || '',
         'Parcela': e.parcelas?.nombre || '',
-        'Campaña': e.campaña || '',
+        'Campaña': e.campana || '',
         'Fecha': new Date(e.created_at).toLocaleDateString('es-ES'),
         'Kg bruto': parseFloat(e.kg || 0),
         'Rendimiento (%)': e.rendimiento ? parseFloat(e.rendimiento) : '',
@@ -89,11 +89,11 @@ export default function ExportarPage() {
         .select('*, socios(nombre)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-      if (filtroCampaña) query = query.eq('campaña', filtroCampaña)
+      if (filtroCampaña) query = query.eq('campana', filtroCampaña)
       const { data } = await query
       datos = (data || []).map(l => ({
         'Socio': l.socios?.nombre || '',
-        'Campaña': l.campaña || '',
+        'Campaña': l.campana || '',
         'Kg totales': parseFloat(l.kg_totales || 0),
         'Precio €/kg': parseFloat(l.precio_kg || 0),
         'Importe total (€)': parseFloat(l.importe_total || 0),

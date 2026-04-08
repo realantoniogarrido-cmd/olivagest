@@ -82,7 +82,7 @@ export default function PortalLiquidaciones() {
                   {/* Header campaña */}
                   <div className="flex items-center justify-between px-4 py-3"
                     style={{ backgroundColor: '#0f172a' }}>
-                    <p className="text-white font-semibold text-sm">Campaña {liq.campaña}</p>
+                    <p className="text-white font-semibold text-sm">Campaña {liq.campana}</p>
                     <span className="text-xs px-2.5 py-1 rounded-full font-medium"
                       style={{ backgroundColor: `${cfg.color}22`, color: cfg.color }}>
                       {cfg.icon} {cfg.label}

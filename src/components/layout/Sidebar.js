@@ -134,7 +134,7 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen w-60 flex-shrink-0" style={{ backgroundColor: '#0f172a' }}>
+    <div className="flex flex-col h-screen w-60 flex-shrink-0 overflow-hidden" style={{ backgroundColor: '#0f172a' }}>
 
       {/* Header */}
       <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -147,8 +147,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5">
+      {/* Nav — scrollable si hay muchos items */}
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
