@@ -21,7 +21,7 @@ export default function PortalParcelas() {
 
   async function init(session) {
     const s = await getPortalSocioFromSession(session)
-    if (!s) { router.replace('/portal'); return }
+    if (!s) { await supabase.auth.signOut(); router.replace('/portal'); return }
 
     const { data } = await supabase
       .from('parcelas')

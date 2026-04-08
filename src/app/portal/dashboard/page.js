@@ -35,12 +35,17 @@ export default function PortalDashboard() {
   async function init(session) {
     // Buscar socio por email de la sesión
     const email = session.user.email
-    const { data: s } = await supabase
+    const { data: s, error: socioErr } = await supabase
       .from('socios')
       .select('*')
       .eq('email', email)
       .single()
-    if (!s) { router.replace('/portal'); return }
+    if (!s) {
+      // Si no hay socio: cerrar sesión para evitar bucle login↔dashboard
+      await supabase.auth.signOut()
+      router.replace('/portal')
+      return
+    }
     setSocio(s)
 
     // Obtener todas las campañas del socio
