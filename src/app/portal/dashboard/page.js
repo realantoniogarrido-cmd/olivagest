@@ -20,11 +20,26 @@ export default function PortalDashboard() {
   const [historico, setHistorico]   = useState([])
   const [loading, setLoading]       = useState(true)
 
-  useEffect(() => { init() }, [])
+  useEffect(() => {
+    // Esperar INITIAL_SESSION antes de init para evitar race condition con getSession()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (!session) { router.replace('/portal'); return }
+        init(session)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
   useEffect(() => { if (socio && campActual) cargarCampana() }, [socio, campActual])
 
-  async function init() {
-    const s = await getPortalSocio()
+  async function init(session) {
+    // Buscar socio por email de la sesión
+    const email = session.user.email
+    const { data: s } = await supabase
+      .from('socios')
+      .select('*')
+      .eq('email', email)
+      .single()
     if (!s) { router.replace('/portal'); return }
     setSocio(s)
 

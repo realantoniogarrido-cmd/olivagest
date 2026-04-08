@@ -1,20 +1,26 @@
 import { supabase } from './supabase'
 
 /**
- * Returns { socio, userId } for the currently logged-in portal user.
- * Looks up the socios table by the auth user's email.
+ * Returns socio row for a given authenticated session.
+ * Pass the session from onAuthStateChange INITIAL_SESSION to avoid race conditions.
  */
-export async function getPortalSocio() {
-  const { data: { session } } = await supabase.auth.getSession()
+export async function getPortalSocioFromSession(session) {
   if (!session) return null
-
   const email = session.user.email
   const { data: socio } = await supabase
     .from('socios')
     .select('*')
     .eq('email', email)
     .single()
-
   if (!socio) return null
-  return socio  // socio.id = socio's row ID, socio.user_id = cooperative manager's user_id
+  return socio
+}
+
+/**
+ * @deprecated Use getPortalSocioFromSession(session) instead.
+ * This version can have race conditions on initial page load.
+ */
+export async function getPortalSocio() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return getPortalSocioFromSession(session)
 }

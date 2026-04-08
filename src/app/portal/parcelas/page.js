@@ -2,17 +2,25 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPortalSocio } from '@/lib/portalAuth'
+import { getPortalSocioFromSession } from '@/lib/portalAuth'
 
 export default function PortalParcelas() {
   const router = useRouter()
   const [parcelas, setParcelas]   = useState([])
   const [loading, setLoading]     = useState(true)
 
-  useEffect(() => { init() }, [])
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (!session) { router.replace('/portal'); return }
+        init(session)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
-  async function init() {
-    const s = await getPortalSocio()
+  async function init(session) {
+    const s = await getPortalSocioFromSession(session)
     if (!s) { router.replace('/portal'); return }
 
     const { data } = await supabase
