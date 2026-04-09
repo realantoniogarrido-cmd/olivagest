@@ -108,30 +108,14 @@ export async function POST(request) {
       ? [{ filename: pdfFilename || 'liquidacion.pdf', content: pdfBase64 }]
       : []
 
-    // Intento principal: enviar al socio
+    // Enviar al socio
     let { data, error } = await resend.emails.send({
-      from: 'OlivaGest <onboarding@resend.dev>',
+      from: 'OlivaGest <portal@olivagest.com>',
       to: [socioEmail],
       subject: `Liquidación campaña ${campana} — ${socioNombre}`,
       html: htmlBody,
       attachments,
     })
-
-    // Si falla por restricción de modo prueba, reenviar al admin con nota
-    if (error && error.message?.includes('testing') && adminEmail && adminEmail !== socioEmail) {
-      const nota = `<strong>Modo prueba Resend:</strong> Este email iba dirigido a <strong>${socioEmail}</strong>.
-        Para enviar a todos los socios, verifica tu dominio en <a href="https://resend.com/domains" style="color:#92400e;">resend.com/domains</a>.`
-      const htmlAdmin = buildHtml({ socioNombre, kg, importe, campana, fecha, rendimientoBruto, puntoExtraccion, kgAceite, precioKg, nota })
-      const retry = await resend.emails.send({
-        from: 'OlivaGest <onboarding@resend.dev>',
-        to: [adminEmail],
-        subject: `[PRUEBA] Liquidación campaña ${campana} — ${socioNombre}`,
-        html: htmlAdmin,
-        attachments,
-      })
-      if (retry.error) return Response.json({ error: retry.error }, { status: 400 })
-      return Response.json({ success: true, testMode: true })
-    }
 
     if (error) return Response.json({ error }, { status: 400 })
     return Response.json({ success: true, data })

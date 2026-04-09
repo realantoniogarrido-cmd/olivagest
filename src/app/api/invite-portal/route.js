@@ -89,31 +89,12 @@ export async function POST(request) {
     const htmlBody = buildInviteHtml({ socioNombre: socioNombre || 'socio', portalUrl })
 
     // Enviar email con Resend
-    let { data: emailData, error: emailError } = await resend.emails.send({
-      from: 'OlivaGest <onboarding@resend.dev>',
+    const { data: emailData, error: emailError } = await resend.emails.send({
+      from: 'OlivaGest <portal@olivagest.com>',
       to: [socioEmail],
       subject: `Tu acceso al Portal del Socio — OlivaGest`,
       html: htmlBody,
     })
-
-    // Fallback modo prueba Resend: redirige al admin con aviso amarillo
-    if (emailError?.message?.includes('testing') && adminEmail && adminEmail !== socioEmail) {
-      const warningBanner = `
-        <div style="background:#fef9c3;border:1px solid #fde68a;padding:12px 16px;border-radius:8px;
-                    font-family:Arial;font-size:12px;color:#92400e;margin-bottom:16px;">
-          <strong>Modo prueba Resend</strong> — Este email iba para <strong>${socioEmail}</strong>.
-          Verifica tu dominio en <a href="https://resend.com/domains" style="color:#92400e;">resend.com/domains</a>
-          para poder enviar a todos los socios directamente.
-        </div>`
-      const retry = await resend.emails.send({
-        from: 'OlivaGest <onboarding@resend.dev>',
-        to: [adminEmail],
-        subject: `[PRUEBA] Invitación portal para ${socioNombre} (${socioEmail})`,
-        html: warningBanner + htmlBody,
-      })
-      if (retry.error) return Response.json({ error: retry.error.message }, { status: 400 })
-      return Response.json({ success: true, testMode: true })
-    }
 
     if (emailError) return Response.json({ error: emailError.message }, { status: 400 })
     return Response.json({ success: true, data: emailData })

@@ -90,26 +90,12 @@ export async function POST(request) {
     // Enviar email branded con Resend
     const html = buildResetHtml({ resetLink, appUrl: baseUrl })
 
-    let { error: emailError } = await resend.emails.send({
-      from: 'OlivaGest <onboarding@resend.dev>',
+    const { error: emailError } = await resend.emails.send({
+      from: 'OlivaGest <portal@olivagest.com>',
       to: [email],
       subject: 'Restablecer contraseña — OlivaGest',
       html,
     })
-
-    // Fallback modo prueba Resend
-    if (emailError?.message?.includes('testing') && adminEmail) {
-      const retry = await resend.emails.send({
-        from: 'OlivaGest <onboarding@resend.dev>',
-        to: [adminEmail],
-        subject: `[PRUEBA] Reset contraseña para ${email}`,
-        html: `<div style="background:#fef9c3;border:1px solid #fde68a;padding:12px;font-family:Arial;font-size:12px;color:#92400e;margin-bottom:16px;border-radius:8px;">
-          <strong>Modo prueba Resend</strong> — Este email iba para <strong>${email}</strong>.
-        </div>${html}`,
-      })
-      if (retry.error) return Response.json({ error: retry.error.message }, { status: 400 })
-      return Response.json({ success: true, testMode: true })
-    }
 
     if (emailError) return Response.json({ error: emailError.message }, { status: 400 })
     return Response.json({ success: true })
