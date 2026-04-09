@@ -1,36 +1,38 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPortalSocioFromSession } from '@/lib/portalAuth'
+
+async function portalFetch(path, token) {
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) return null
+  return res.json()
+}
 
 export default function PortalParcelas() {
-  const router = useRouter()
-  const [parcelas, setParcelas]   = useState([])
-  const [loading, setLoading]     = useState(true)
+  const router   = useRouter()
+  const tokenRef = useRef(null)
+
+  const [parcelas, setParcelas] = useState([])
+  const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') {
         if (!session) { router.replace('/portal'); return }
-        init(session)
+        tokenRef.current = session.access_token
+        init(session.access_token)
       }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  async function init(session) {
-    const s = await getPortalSocioFromSession(session)
-    if (!s) { await supabase.auth.signOut(); router.replace('/portal'); return }
+  async function init(token) {
+    const meData = await portalFetch('/api/portal/me', token)
+    if (!meData?.socio) { await supabase.auth.signOut(); router.replace('/portal'); return }
 
-    const { data } = await supabase
-      .from('parcelas')
-      .select('*')
-      .eq('user_id', s.user_id)
-      .eq('socio_id', s.id)
-      .order('nombre')
-
-    setParcelas(data || [])
+    const parcelasData = await portalFetch('/api/portal/parcelas', token)
+    setParcelas(parcelasData?.data || [])
     setLoading(false)
   }
 
@@ -60,9 +62,7 @@ export default function PortalParcelas() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="font-bold text-gray-900">{p.nombre || 'Sin nombre'}</p>
-                  {p.municipio && (
-                    <p className="text-xs text-gray-400 mt-0.5">📍 {p.municipio}</p>
-                  )}
+                  {p.municipio && <p className="text-xs text-gray-400 mt-0.5">📍 {p.municipio}</p>}
                 </div>
                 {p.superficie && (
                   <div className="text-right">
@@ -73,38 +73,14 @@ export default function PortalParcelas() {
                   </div>
                 )}
               </div>
-
               <div className="grid grid-cols-2 gap-2 text-sm pt-3 border-t border-gray-50">
-                {p.variedad && (
-                  <div>
-                    <p className="text-xs text-gray-400">Variedad</p>
-                    <p className="font-medium text-gray-700">{p.variedad}</p>
-                  </div>
-                )}
-                {p.rendimiento && (
-                  <div>
-                    <p className="text-xs text-gray-400">Rendimiento</p>
-                    <p className="font-medium text-gray-700">{p.rendimiento}%</p>
-                  </div>
-                )}
-                {p.pendiente && (
-                  <div>
-                    <p className="text-xs text-gray-400">Pendiente</p>
-                    <p className="font-medium text-gray-700">{p.pendiente}</p>
-                  </div>
-                )}
-                {p.sistema_riego && (
-                  <div>
-                    <p className="text-xs text-gray-400">Riego</p>
-                    <p className="font-medium text-gray-700">{p.sistema_riego}</p>
-                  </div>
-                )}
+                {p.variedad      && <div><p className="text-xs text-gray-400">Variedad</p><p className="font-medium text-gray-700">{p.variedad}</p></div>}
+                {p.rendimiento   && <div><p className="text-xs text-gray-400">Rendimiento</p><p className="font-medium text-gray-700">{p.rendimiento}%</p></div>}
+                {p.pendiente     && <div><p className="text-xs text-gray-400">Pendiente</p><p className="font-medium text-gray-700">{p.pendiente}</p></div>}
+                {p.sistema_riego && <div><p className="text-xs text-gray-400">Riego</p><p className="font-medium text-gray-700">{p.sistema_riego}</p></div>}
               </div>
-
               {p.observaciones && (
-                <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50">
-                  {p.observaciones}
-                </p>
+                <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50">{p.observaciones}</p>
               )}
             </div>
           ))}

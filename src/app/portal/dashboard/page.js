@@ -1,60 +1,73 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPortalSocioFromSession } from '@/lib/portalAuth'
 
 const ESTADO_CFG = {
-  borrador:       { label: 'En preparación', color: '#64748b', bg: '#f1f5f9' },
+  borrador:       { label: 'En preparación',   color: '#64748b', bg: '#f1f5f9' },
   pendiente_pago: { label: 'Pendiente de pago', color: '#d97706', bg: '#fffbeb' },
-  pagada:         { label: 'Pagada ✓', color: '#16a34a', bg: '#f0fdf4' },
+  pagada:         { label: 'Pagada ✓',          color: '#16a34a', bg: '#f0fdf4' },
+}
+
+// Helper: llamada autenticada a la API del portal
+async function portalFetch(path, token, params = {}) {
+  const url = new URL(path, window.location.origin)
+  Object.entries(params).forEach(([k, v]) => v && url.searchParams.set(k, v))
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return null
+  return res.json()
 }
 
 export default function PortalDashboard() {
-  const router = useRouter()
-  const [socio, setSocio]           = useState(null)
-  const [campanyas, setCampanyas]   = useState([])
+  const router   = useRouter()
+  const tokenRef = useRef(null)
+
+  const [socio,      setSocio]      = useState(null)
+  const [campanyas,  setCampanyas]  = useState([])
   const [campActual, setCampActual] = useState('')
-  const [entregas, setEntregas]     = useState([])
-  const [liquidacion, setLiquidacion] = useState(null)
-  const [historico, setHistorico]   = useState([])
-  const [loading, setLoading]       = useState(true)
+  const [entregas,   setEntregas]   = useState([])
+  const [liquidacion,setLiquidacion]= useState(null)
+  const [historico,  setHistorico]  = useState([])
+  const [loading,    setLoading]    = useState(true)
 
   useEffect(() => {
-    // Esperar INITIAL_SESSION antes de init para evitar race condition con getSession()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') {
         if (!session) { router.replace('/portal'); return }
-        init(session)
+        tokenRef.current = session.access_token
+        init(session.access_token)
       }
     })
     return () => subscription.unsubscribe()
   }, [])
-  useEffect(() => { if (socio && campActual) cargarCampana() }, [socio, campActual])
 
-  async function init(session) {
-    const s = await getPortalSocioFromSession(session)
-    if (!s) {
+  useEffect(() => {
+    if (socio && campActual && tokenRef.current) cargarCampana(campActual, tokenRef.current)
+  }, [socio, campActual])
+
+  async function init(token) {
+    // Obtener socio via API (bypass RLS)
+    const meData = await portalFetch('/api/portal/me', token)
+    if (!meData?.socio) {
       await supabase.auth.signOut()
       router.replace('/portal')
       return
     }
-    setSocio(s)
+    setSocio(meData.socio)
 
-    // Obtener todas las campañas del socio
-    const { data: ents } = await supabase
-      .from('entregas')
-      .select('campana, kg_neto, kg_bruto')
-      .eq('user_id', s.user_id)
-      .eq('socio_id', s.id)
+    // Obtener resumen de entregas para histórico (bypass RLS)
+    const entsData = await portalFetch('/api/portal/entregas', token)
+    const ents = entsData?.data || []
 
-    const camps = [...new Set((ents || []).map(e => e.campana).filter(Boolean))].sort().reverse()
+    const camps = [...new Set(ents.map(e => e.campana).filter(Boolean))].sort().reverse()
     setCampanyas(camps)
 
-    // Histórico: kg por campaña
     const hist = camps.map(c => ({
       campana: c,
-      kg: (ents || []).filter(e => e.campana === c).reduce((sum, e) => sum + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0),
+      kg: ents.filter(e => e.campana === c)
+             .reduce((sum, e) => sum + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0),
     }))
     setHistorico(hist)
 
@@ -62,31 +75,22 @@ export default function PortalDashboard() {
     else setLoading(false)
   }
 
-  async function cargarCampana() {
+  async function cargarCampana(camp, token) {
     setLoading(true)
-    const [{ data: ents }, { data: liq }] = await Promise.all([
-      supabase.from('entregas')
-        .select('*')
-        .eq('user_id', socio.user_id)
-        .eq('socio_id', socio.id)
-        .eq('campana', campActual),
-      supabase.from('liquidaciones')
-        .select('*')
-        .eq('user_id', socio.user_id)
-        .eq('socio_id', socio.id)
-        .eq('campana', campActual)
-        .single(),
+    const [entsData, liqData] = await Promise.all([
+      portalFetch('/api/portal/entregas',      token, { campana: camp }),
+      portalFetch('/api/portal/liquidaciones', token, { campana: camp }),
     ])
-    setEntregas(ents || [])
-    setLiquidacion(liq || null)
+    setEntregas(entsData?.data || [])
+    setLiquidacion(liqData?.data || null)
     setLoading(false)
   }
 
-  const totalKg     = entregas.reduce((s, e) => s + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0)
-  const kgAceite    = liquidacion?.kg_aceite_final
+  const totalKg  = entregas.reduce((s, e) => s + (parseFloat(e.kg_neto || e.kg_bruto) || 0), 0)
+  const kgAceite = liquidacion?.kg_aceite_final
     ? parseFloat(liquidacion.kg_aceite_final)
     : totalKg * ((parseFloat(liquidacion?.rendimiento_neto) || 20) / 100)
-  const estCfg      = ESTADO_CFG[liquidacion?.estado || 'borrador']
+  const estCfg = ESTADO_CFG[liquidacion?.estado || 'borrador']
 
   if (!socio && !loading) return null
 
@@ -97,15 +101,12 @@ export default function PortalDashboard() {
       {campanyas.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           {campanyas.map(c => (
-            <button
-              key={c}
-              onClick={() => setCampActual(c)}
+            <button key={c} onClick={() => setCampActual(c)}
               className="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all"
               style={{
                 backgroundColor: campActual === c ? '#0f172a' : '#e2e8f0',
                 color: campActual === c ? '#4ade80' : '#64748b',
-              }}
-            >
+              }}>
               {c}
             </button>
           ))}
@@ -151,7 +152,8 @@ export default function PortalDashboard() {
           </div>
 
           {/* Liquidación */}
-          <div className="rounded-2xl p-5" style={{ backgroundColor: estCfg.bg, border: `1px solid ${estCfg.color}33` }}>
+          <div className="rounded-2xl p-5"
+            style={{ backgroundColor: estCfg.bg, border: `1px solid ${estCfg.color}33` }}>
             <div className="flex items-start justify-between mb-3">
               <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: estCfg.color }}>
                 Liquidación
@@ -161,13 +163,11 @@ export default function PortalDashboard() {
                 {estCfg.label}
               </span>
             </div>
-
             {liquidacion ? (
               <>
                 <p className="text-3xl font-bold mt-1" style={{ color: '#0f172a' }}>
                   {parseFloat(liquidacion.importe_total).toLocaleString('es-ES', {
-                    style: 'currency', currency: 'EUR',
-                    minimumFractionDigits: 2,
+                    style: 'currency', currency: 'EUR', minimumFractionDigits: 2,
                   })}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
@@ -203,12 +203,12 @@ export default function PortalDashboard() {
             )}
           </div>
 
-          {/* Histórico de campañas */}
+          {/* Histórico */}
           {historico.length > 1 && (
             <div className="bg-white rounded-2xl p-5 border border-gray-100">
               <h2 className="text-sm font-semibold text-gray-800 mb-3">Histórico de producción</h2>
               <div className="space-y-2">
-                {historico.map((h, i) => {
+                {historico.map(h => {
                   const max = Math.max(...historico.map(x => x.kg))
                   const pct = max > 0 ? (h.kg / max) * 100 : 0
                   return (
@@ -218,19 +218,12 @@ export default function PortalDashboard() {
                           {h.campana} {h.campana === campActual && '← actual'}
                         </span>
                         <span className="text-gray-400">
-                          {h.kg >= 1000
-                            ? `${(h.kg / 1000).toFixed(2)} t`
-                            : `${h.kg.toLocaleString('es-ES', { maximumFractionDigits: 0 })} kg`}
+                          {h.kg >= 1000 ? `${(h.kg/1000).toFixed(2)} t` : `${h.kg.toLocaleString('es-ES',{maximumFractionDigits:0})} kg`}
                         </span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: h.campana === campActual ? '#4ade80' : '#cbd5e1',
-                          }}
-                        />
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: h.campana === campActual ? '#4ade80' : '#cbd5e1' }} />
                       </div>
                     </div>
                   )

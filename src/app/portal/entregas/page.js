@@ -1,8 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPortalSocioFromSession } from '@/lib/portalAuth'
 
 const CALIDAD_CFG = {
   Extra:    { bg: '#f0fdf4', color: '#16a34a' },
@@ -10,37 +9,40 @@ const CALIDAD_CFG = {
   Segunda:  { bg: '#fffbeb', color: '#d97706' },
 }
 
+async function portalFetch(path, token, params = {}) {
+  const url = new URL(path, window.location.origin)
+  Object.entries(params).forEach(([k, v]) => v && url.searchParams.set(k, v))
+  const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) return null
+  return res.json()
+}
+
 export default function PortalEntregas() {
-  const router = useRouter()
-  const [socio, setSocio]           = useState(null)
-  const [entregas, setEntregas]     = useState([])
-  const [campanyas, setCampanyas]   = useState([])
+  const router   = useRouter()
+  const tokenRef = useRef(null)
+
+  const [entregas,   setEntregas]   = useState([])
+  const [campanyas,  setCampanyas]  = useState([])
   const [campFiltro, setCampFiltro] = useState('')
-  const [loading, setLoading]       = useState(true)
+  const [loading,    setLoading]    = useState(true)
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') {
         if (!session) { router.replace('/portal'); return }
-        init(session)
+        tokenRef.current = session.access_token
+        init(session.access_token)
       }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  async function init(session) {
-    const s = await getPortalSocioFromSession(session)
-    if (!s) { await supabase.auth.signOut(); router.replace('/portal'); return }
-    setSocio(s)
+  async function init(token) {
+    const meData = await portalFetch('/api/portal/me', token)
+    if (!meData?.socio) { await supabase.auth.signOut(); router.replace('/portal'); return }
 
-    const { data } = await supabase
-      .from('entregas')
-      .select('*, parcelas(nombre)')
-      .eq('user_id', s.user_id)
-      .eq('socio_id', s.id)
-      .order('fecha', { ascending: false })
-
-    const ents = data || []
+    const entsData = await portalFetch('/api/portal/entregas', token)
+    const ents = entsData?.data || []
     setEntregas(ents)
 
     const camps = [...new Set(ents.map(e => e.campana).filter(Boolean))].sort().reverse()
@@ -50,36 +52,24 @@ export default function PortalEntregas() {
   }
 
   const filtradas = campFiltro ? entregas.filter(e => e.campana === campFiltro) : entregas
-  const totalKg   = filtradas.reduce((s, e) => s + (parseFloat(e.kg) || 0), 0)
+  const totalKg   = filtradas.reduce((s, e) => s + (parseFloat(e.kg_neto || e.kg_bruto || e.kg) || 0), 0)
 
   return (
     <div className="px-4 py-5">
       <h1 className="text-xl font-bold text-gray-900 mb-1">Mis entregas</h1>
       <p className="text-sm text-gray-400 mb-4">{entregas.length} entregas en total</p>
 
-      {/* Selector campaña */}
       {campanyas.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 mb-4">
-          <button
-            onClick={() => setCampFiltro('')}
-            className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-            style={{
-              backgroundColor: campFiltro === '' ? '#0f172a' : '#e2e8f0',
-              color: campFiltro === '' ? '#4ade80' : '#64748b',
-            }}
-          >
+          <button onClick={() => setCampFiltro('')}
+            className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{ backgroundColor: campFiltro === '' ? '#0f172a' : '#e2e8f0', color: campFiltro === '' ? '#4ade80' : '#64748b' }}>
             Todas
           </button>
           {campanyas.map(c => (
-            <button
-              key={c}
-              onClick={() => setCampFiltro(c)}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-              style={{
-                backgroundColor: campFiltro === c ? '#0f172a' : '#e2e8f0',
-                color: campFiltro === c ? '#4ade80' : '#64748b',
-              }}
-            >
+            <button key={c} onClick={() => setCampFiltro(c)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{ backgroundColor: campFiltro === c ? '#0f172a' : '#e2e8f0', color: campFiltro === c ? '#4ade80' : '#64748b' }}>
               {c}
             </button>
           ))}
@@ -94,24 +84,19 @@ export default function PortalEntregas() {
           </svg>
         </div>
       ) : filtradas.length === 0 ? (
-        <p className="text-center text-gray-400 text-sm py-12">No hay entregas para esta campaña.</p>
+        <p className="text-center text-gray-400 text-sm py-12">No hay entregas{campFiltro ? ' para esta campaña' : ' registradas'}.</p>
       ) : (
         <>
-          {/* Resumen campaña */}
-          <div className="rounded-xl px-4 py-3 mb-4 flex items-center justify-between"
-            style={{ backgroundColor: '#0f172a' }}>
+          <div className="rounded-xl px-4 py-3 mb-4 flex items-center justify-between" style={{ backgroundColor: '#0f172a' }}>
             <p className="text-xs text-gray-400">{filtradas.length} entregas · {campFiltro || 'todas'}</p>
             <p className="font-bold text-white">
-              {totalKg >= 1000
-                ? `${(totalKg / 1000).toFixed(2)} t`
-                : `${totalKg.toLocaleString('es-ES', { maximumFractionDigits: 0 })} kg`}
+              {totalKg >= 1000 ? `${(totalKg/1000).toFixed(2)} t` : `${totalKg.toLocaleString('es-ES',{maximumFractionDigits:0})} kg`}
             </p>
           </div>
-
-          {/* Lista */}
           <div className="space-y-2">
             {filtradas.map(e => {
               const fecha = e.fecha || e.created_at
+              const kg    = parseFloat(e.kg_neto || e.kg_bruto || e.kg) || 0
               const cal   = CALIDAD_CFG[e.calidad]
               return (
                 <div key={e.id} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
@@ -119,7 +104,7 @@ export default function PortalEntregas() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-sm font-semibold text-gray-900">
-                          {parseFloat(e.kg).toLocaleString('es-ES', { maximumFractionDigits: 0 })} kg
+                          {kg.toLocaleString('es-ES', { maximumFractionDigits: 0 })} kg
                         </p>
                         {e.calidad && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium"
@@ -137,13 +122,9 @@ export default function PortalEntregas() {
                     </div>
                     <div className="text-right flex-shrink-0 ml-3">
                       <p className="text-xs text-gray-400">
-                        {fecha
-                          ? new Date(fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
-                          : '—'}
+                        {fecha ? new Date(fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '—'}
                       </p>
-                      {e.campana && (
-                        <p className="text-xs text-gray-300 mt-0.5">{e.campana}</p>
-                      )}
+                      {e.campana && <p className="text-xs text-gray-300 mt-0.5">{e.campana}</p>}
                     </div>
                   </div>
                 </div>
