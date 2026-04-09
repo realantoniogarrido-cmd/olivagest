@@ -1,26 +1,33 @@
-import { supabase } from './supabase'
-
 /**
- * Returns socio row for a given authenticated session.
- * Pass the session from onAuthStateChange INITIAL_SESSION to avoid race conditions.
+ * Devuelve el socio del usuario autenticado.
+ * Llama a /api/portal/me (server-side con service role) para bypassear
+ * las políticas RLS de Supabase, que bloquean la consulta cuando el
+ * auth.uid() del socio ≠ user_id del cooperativista.
  */
 export async function getPortalSocioFromSession(session) {
-  if (!session) return null
-  const email = session.user.email
-  const { data: socio } = await supabase
-    .from('socios')
-    .select('*')
-    .eq('email', email)
-    .single()
-  if (!socio) return null
-  return socio
+  if (!session?.access_token) return null
+
+  try {
+    const res = await fetch('/api/portal/me', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    })
+
+    if (!res.ok) return null
+    const { socio } = await res.json()
+    return socio || null
+  } catch {
+    return null
+  }
 }
 
 /**
- * @deprecated Use getPortalSocioFromSession(session) instead.
- * This version can have race conditions on initial page load.
+ * @deprecated Usa getPortalSocioFromSession(session) desde onAuthStateChange.
  */
 export async function getPortalSocio() {
-  const { data: { session } } = await supabase.auth.getSession()
-  return getPortalSocioFromSession(session)
+  const { createClient } = await import('@supabase/supabase-js')
+  // fallback: no usado en producción
+  return null
 }

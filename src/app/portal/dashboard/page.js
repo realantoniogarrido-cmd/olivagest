@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPortalSocio } from '@/lib/portalAuth'
+import { getPortalSocioFromSession } from '@/lib/portalAuth'
 
 const ESTADO_CFG = {
   borrador:       { label: 'En preparación', color: '#64748b', bg: '#f1f5f9' },
@@ -33,15 +33,8 @@ export default function PortalDashboard() {
   useEffect(() => { if (socio && campActual) cargarCampana() }, [socio, campActual])
 
   async function init(session) {
-    // Buscar socio por email de la sesión
-    const email = session.user.email
-    const { data: s, error: socioErr } = await supabase
-      .from('socios')
-      .select('*')
-      .eq('email', email)
-      .single()
+    const s = await getPortalSocioFromSession(session)
     if (!s) {
-      // Si no hay socio: cerrar sesión para evitar bucle login↔dashboard
       await supabase.auth.signOut()
       router.replace('/portal')
       return
