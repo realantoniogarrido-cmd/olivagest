@@ -273,13 +273,13 @@ export default function FichaSocioPage() {
                     </span>
                   </div>
                   <div className="grid grid-cols-4 gap-4">
-                    <div><p className="text-xs text-gray-400 mb-1">Kg aceituna</p><p className="text-sm font-semibold">{liq.kg_aceituna?.toLocaleString('es-ES')} kg</p></div>
-                    <div><p className="text-xs text-gray-400 mb-1">Kg aceite</p><p className="text-sm font-semibold">{liq.kg_aceite?.toLocaleString('es-ES', { maximumFractionDigits:1 })} kg</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Kg aceituna</p><p className="text-sm font-semibold text-gray-800">{liq.kg_aceituna ? `${liq.kg_aceituna.toLocaleString('es-ES')} kg` : '—'}</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Kg aceite</p><p className="text-sm font-semibold text-gray-800">{liq.kg_aceite ? `${liq.kg_aceite.toLocaleString('es-ES', { maximumFractionDigits:1 })} kg` : '—'}</p></div>
                     <div>
                       <p className="text-xs text-gray-400 mb-1">Rendimiento</p>
-                      <p className="text-sm font-semibold">{liq.kg_aceituna && liq.kg_aceite ? `${((liq.kg_aceite/liq.kg_aceituna)*100).toFixed(1)}%` : '—'}</p>
+                      <p className="text-sm font-semibold text-gray-800">{liq.kg_aceituna && liq.kg_aceite ? `${((liq.kg_aceite/liq.kg_aceituna)*100).toFixed(1)}%` : '—'}</p>
                     </div>
-                    <div><p className="text-xs text-gray-400 mb-1">Precio/kg</p><p className="text-sm font-semibold">{liq.precio_kg?.toLocaleString('es-ES', { minimumFractionDigits:2 })} €</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Precio/kg</p><p className="text-sm font-semibold text-gray-800">{liq.precio_kg ? `${liq.precio_kg.toLocaleString('es-ES', { minimumFractionDigits:2 })} €` : '—'}</p></div>
                   </div>
                 </div>
               ))
