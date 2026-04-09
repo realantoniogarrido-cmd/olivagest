@@ -50,7 +50,7 @@ export default function PortalLayout({ children }) {
 
   // Protect all /portal/* routes (except login + callback)
   useEffect(() => {
-    const publicPaths = ['/portal', '/portal/callback']
+    const publicPaths = ['/portal', '/portal/callback', '/portal/reset-password']
     if (publicPaths.includes(pathname)) return
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -66,7 +66,7 @@ export default function PortalLayout({ children }) {
   }, [pathname, router])
 
   // Don't render the app shell on the login/callback pages
-  const isAuthPage = ['/portal', '/portal/callback'].includes(pathname)
+  const isAuthPage = ['/portal', '/portal/callback', '/portal/reset-password'].includes(pathname)
   if (isAuthPage) return <>{children}</>
 
   async function handleLogout() {
