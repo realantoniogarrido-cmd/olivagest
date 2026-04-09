@@ -81,19 +81,25 @@ export default function PortalLoginPage() {
     // Si va bien → SIGNED_IN event → redirect dashboard
   }
 
-  // ── Recuperar contraseña ──────────────────────────────────────────
+  // ── Recuperar contraseña (email branded OlivaGest via nuestra API) ─
   async function handleReset(e) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
-    const { error: err } = await supabase.auth.resetPasswordForEmail(
-      email.trim().toLowerCase(),
-      { redirectTo: `${appUrl}/portal/callback?type=recovery` }
-    )
+
+    try {
+      const res = await fetch('/api/portal/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al enviar el email')
+      setResetEnviado(true)
+    } catch (err) {
+      setError(err.message)
+    }
     setLoading(false)
-    if (err) { setError(err.message); return }
-    setResetEnviado(true)
   }
 
   // ── Loading ───────────────────────────────────────────────────────
