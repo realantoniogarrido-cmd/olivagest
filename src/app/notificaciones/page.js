@@ -319,15 +319,15 @@ export default function NotificacionesPage() {
 
               {/* Tipo */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tipo</label>
+                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Tipo</label>
                 <div className="flex flex-wrap gap-2">
                   {TIPOS_AVISO.map(t => (
                     <button key={t.value} onClick={() => setForm(f => ({ ...f, tipo: t.value }))}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
                       style={{
-                        backgroundColor: form.tipo === t.value ? '#0f172a' : 'white',
-                        color: form.tipo === t.value ? 'white' : '#6b7280',
-                        borderColor: form.tipo === t.value ? '#0f172a' : '#e5e7eb',
+                        backgroundColor: form.tipo === t.value ? '#0f172a' : '#f8fafc',
+                        color: form.tipo === t.value ? 'white' : '#1e293b',
+                        borderColor: form.tipo === t.value ? '#0f172a' : '#cbd5e1',
                       }}>
                       {t.label}
                     </button>
@@ -337,39 +337,39 @@ export default function NotificacionesPage() {
 
               {/* Título */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Asunto</label>
+                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Asunto</label>
                 <input
                   value={form.titulo}
                   onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
                   placeholder="Ej: Convocatoria Asamblea General"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gray-400"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-500 placeholder-gray-400"
                 />
               </div>
 
               {/* Mensaje */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Mensaje</label>
+                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Mensaje</label>
                 <textarea
                   value={form.mensaje}
                   onChange={e => setForm(f => ({ ...f, mensaje: e.target.value }))}
                   placeholder="Escribe el contenido de la notificación…"
                   rows={4}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gray-400 resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-500 resize-none placeholder-gray-400"
                 />
               </div>
 
               {/* Destinatarios */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Destinatarios</label>
+                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Destinatarios</label>
                 <div className="flex gap-2 mb-3">
                   <button onClick={() => setForm(f => ({ ...f, destinatarios: 'todos', seleccion: [] }))}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                    style={{ backgroundColor: form.destinatarios === 'todos' ? '#0f172a' : 'white', color: form.destinatarios === 'todos' ? 'white' : '#6b7280', borderColor: form.destinatarios === 'todos' ? '#0f172a' : '#e5e7eb' }}>
+                    style={{ backgroundColor: form.destinatarios === 'todos' ? '#0f172a' : '#f8fafc', color: form.destinatarios === 'todos' ? 'white' : '#1e293b', borderColor: form.destinatarios === 'todos' ? '#0f172a' : '#cbd5e1' }}>
                     Todos los socios ({socios.length})
                   </button>
                   <button onClick={() => setForm(f => ({ ...f, destinatarios: 'seleccion' }))}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                    style={{ backgroundColor: form.destinatarios === 'seleccion' ? '#0f172a' : 'white', color: form.destinatarios === 'seleccion' ? 'white' : '#6b7280', borderColor: form.destinatarios === 'seleccion' ? '#0f172a' : '#e5e7eb' }}>
+                    style={{ backgroundColor: form.destinatarios === 'seleccion' ? '#0f172a' : '#f8fafc', color: form.destinatarios === 'seleccion' ? 'white' : '#1e293b', borderColor: form.destinatarios === 'seleccion' ? '#0f172a' : '#cbd5e1' }}>
                     Elegir socios
                   </button>
                 </div>

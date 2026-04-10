@@ -119,7 +119,7 @@ export default function PortalLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#0c1424' }}>
+    <div className="min-h-screen" style={{ backgroundColor: '#f5f5f0' }}>
       {/* Top bar — full width */}
       <div className="sticky top-0 z-10" style={{ backgroundColor: '#0f172a' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-5 py-3">
