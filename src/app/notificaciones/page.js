@@ -80,8 +80,9 @@ export default function NotificacionesPage() {
     // Socios sin entregas
     const campanyaActiva = (campanyas || []).find(c => c.estado === 'activa')
     if (campanyaActiva && (sociosData || []).length > 0) {
-      // Comparación flexible: "25/26" matchea con "2025/26" y viceversa
-      const norm = s => (s || '').toLowerCase().replace(/\s/g, '')
+      // Comparación flexible: elimina "campaña/campana" y espacios, luego compara por inclusión
+      // Así "campaña 25/26" matchea con "2025/26" y viceversa
+      const norm = s => (s || '').toLowerCase().replace(/campa[nñ]a/g, '').replace(/\s/g, '').replace(/^[_\-\/]+|[_\-\/]+$/g, '')
       const nombreActiva = norm(campanyaActiva.nombre)
       const enCampaña = new Set(
         (entregas || [])
