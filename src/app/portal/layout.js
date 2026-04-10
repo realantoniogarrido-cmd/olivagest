@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -50,12 +50,25 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: '/portal/avisos',
+    label: 'Avisos',
+    badge: true, // indica que puede tener badge de no-leídos
+    icon: (active) => (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      </svg>
+    ),
+  },
 ]
 
 export default function PortalLayout({ children }) {
   const router   = useRouter()
   const pathname = usePathname()
-  const [socioNombre, setSocioNombre] = useState('')
+  const tokenRef = useRef(null)
+
+  const [socioNombre,  setSocioNombre]  = useState('')
+  const [avisosNoLeidos, setAvisosNoLeidos] = useState(0)
 
   // Protect all /portal/* routes (except login + callback)
   useEffect(() => {
@@ -66,13 +79,35 @@ export default function PortalLayout({ children }) {
       if (!session) {
         router.replace('/portal')
       } else {
+        tokenRef.current = session.access_token
         // Get socio name for greeting
         const email = session.user.email
         supabase.from('socios').select('nombre').eq('email', email).single()
           .then(({ data }) => { if (data?.nombre) setSocioNombre(data.nombre.split(' ')[0]) })
+        // Cargar conteo de avisos no leídos
+        fetchAvisosNoLeidos(session.access_token)
       }
     })
   }, [pathname, router])
+
+  // Recargar badge al salir de /portal/avisos (por si los marcó leídos)
+  useEffect(() => {
+    if (tokenRef.current && !pathname.startsWith('/portal/avisos')) {
+      fetchAvisosNoLeidos(tokenRef.current)
+    }
+  }, [pathname])
+
+  async function fetchAvisosNoLeidos(token) {
+    try {
+      const res = await fetch('/api/portal/avisos', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const { avisos } = await res.json()
+        setAvisosNoLeidos((avisos || []).filter(a => !a.leida).length)
+      }
+    } catch {}
+  }
 
   // Don't render the app shell on the login/callback pages
   const isAuthPage = ['/portal', '/portal/callback', '/portal/reset-password'].includes(pathname)
@@ -84,7 +119,7 @@ export default function PortalLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#f8fafc' }}>
+    <div className="min-h-screen" style={{ backgroundColor: '#0c1424' }}>
       {/* Top bar — full width */}
       <div className="sticky top-0 z-10" style={{ backgroundColor: '#0f172a' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between px-5 py-3">
@@ -104,18 +139,30 @@ export default function PortalLayout({ children }) {
           <nav className="hidden md:flex items-center gap-1">
             {NAV.map(item => {
               const active = pathname.startsWith(item.href)
+              const hasUnread = item.badge && avisosNoLeidos > 0
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  className="relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
                   style={{
                     backgroundColor: active ? 'rgba(74,222,128,0.15)' : 'transparent',
                     color: active ? '#4ade80' : 'rgba(255,255,255,0.5)',
                   }}
                 >
-                  {item.icon(active)}
+                  <span className="relative">
+                    {item.icon(active)}
+                    {hasUnread && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#f87171]" />
+                    )}
+                  </span>
                   <span>{item.label}</span>
+                  {hasUnread && (
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'rgba(248,113,113,0.18)', color: '#f87171' }}>
+                      {avisosNoLeidos}
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -145,14 +192,24 @@ export default function PortalLayout({ children }) {
           style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           {NAV.map(item => {
             const active = pathname.startsWith(item.href)
+            const hasUnread = item.badge && avisosNoLeidos > 0
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-all"
+                className="relative flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all"
                 style={{ color: active ? '#4ade80' : 'rgba(255,255,255,0.35)' }}
               >
-                {item.icon(active)}
+                <span className="relative">
+                  {item.icon(active)}
+                  {hasUnread && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#f87171] border border-[#0f172a] flex items-center justify-center">
+                      {avisosNoLeidos < 10 && (
+                        <span className="text-white" style={{ fontSize: '7px', fontWeight: 700 }}>{avisosNoLeidos}</span>
+                      )}
+                    </span>
+                  )}
+                </span>
                 <span className="text-xs font-medium">{item.label}</span>
               </Link>
             )
