@@ -80,7 +80,17 @@ export default function NotificacionesPage() {
     // Socios sin entregas
     const campanyaActiva = (campanyas || []).find(c => c.estado === 'activa')
     if (campanyaActiva && (sociosData || []).length > 0) {
-      const enCampaña = new Set((entregas || []).filter(e => e.campana === campanyaActiva.nombre).map(e => e.socio_id))
+      // Comparación flexible: "25/26" matchea con "2025/26" y viceversa
+      const norm = s => (s || '').toLowerCase().replace(/\s/g, '')
+      const nombreActiva = norm(campanyaActiva.nombre)
+      const enCampaña = new Set(
+        (entregas || [])
+          .filter(e => {
+            const ec = norm(e.campana)
+            return ec === nombreActiva || ec.includes(nombreActiva) || nombreActiva.includes(ec)
+          })
+          .map(e => e.socio_id)
+      )
       const sin = (sociosData || []).filter(s => !enCampaña.has(s.id))
       if (sin.length > 0) {
         alertas.push({ id: 'sin-entregas', tipo: 'advertencia', titulo: 'Socios sin entregas esta campaña', mensaje: `${sin.length} socio${sin.length > 1 ? 's no han' : ' no ha'} registrado entregas en "${campanyaActiva.nombre}".`, fecha: ahora, accionLabel: 'Ver socios', accionHref: '/socios' })
