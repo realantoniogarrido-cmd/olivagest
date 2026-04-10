@@ -33,7 +33,7 @@ export async function GET(request) {
   }
 }
 
-// POST — subir un documento (agricultor)
+// POST — subir un documento (agricultor) + notificar al admin
 export async function POST(request) {
   try {
     const verified = await verifyPortalRequest(request)
@@ -45,7 +45,6 @@ export async function POST(request) {
     if (!file) return Response.json({ error: 'No se recibió archivo' }, { status: 400 })
 
     const adminClient = getAdminClient()
-    // Prefijo "socio__" para identificar que lo subió el agricultor
     const nombre = `socio__${Date.now()}_${file.name}`
     const buffer = Buffer.from(await file.arrayBuffer())
 
@@ -54,6 +53,20 @@ export async function POST(request) {
       .upload(`${socio.id}/${nombre}`, buffer, { contentType: file.type })
 
     if (error) return Response.json({ error: error.message }, { status: 400 })
+
+    // Insertar notificación para el admin de esta cooperativa
+    // (socio.user_id es el admin al que pertenece este socio)
+    if (socio.user_id) {
+      await adminClient.from('notificaciones').insert({
+        user_id:  socio.user_id,
+        tipo:     'documento',
+        titulo:   `${socio.nombre} ha subido un documento`,
+        mensaje:  `El socio ${socio.nombre} ha subido "${file.name}" al repositorio compartido.`,
+        metadata: { socio_id: socio.id, socio_nombre: socio.nombre, archivo: file.name },
+        leida:    false,
+      }).catch(() => {}) // silencioso si la tabla aún no existe
+    }
+
     return Response.json({ success: true })
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 })
@@ -68,7 +81,6 @@ export async function DELETE(request) {
     const { socio } = verified
 
     const { nombre } = await request.json()
-    // Solo puede borrar documentos que subió el mismo agricultor
     if (!nombre.startsWith('socio__')) {
       return Response.json({ error: 'Solo puedes eliminar documentos que hayas subido tú' }, { status: 403 })
     }

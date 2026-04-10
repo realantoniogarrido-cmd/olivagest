@@ -12,11 +12,12 @@ export default function NotificacionesPage() {
   async function generarNotificaciones() {
     setLoading(true)
     const userId = await getUserId()
-    const [{ data: socios }, { data: entregas }, { data: liquidaciones }, { data: campanyas }] = await Promise.all([
+    const [{ data: socios }, { data: entregas }, { data: liquidaciones }, { data: campanyas }, { data: notisDocs }] = await Promise.all([
       supabase.from('socios').select('*').eq('user_id', userId),
       supabase.from('entregas').select('*, socios(nombre)').eq('user_id', userId).order('created_at', { ascending: false }),
       supabase.from('liquidaciones').select('*, socios(nombre)').eq('user_id', userId),
       supabase.from('campanyas').select('*').eq('user_id', userId),
+      supabase.from('notificaciones').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20).catch(() => ({ data: [] })),
     ])
 
     const alertas = []
@@ -64,6 +65,20 @@ export default function NotificacionesPage() {
       alertas.push({ id: 'bienvenida', tipo: 'info', titulo: '¡Bienvenido a OlivaGest!', mensaje: 'Empieza registrando los socios de tu cooperativa.', fecha: ahora, accionLabel: 'Añadir socios', accionHref: '/socios' })
     }
 
+    // Notificaciones reales de documentos subidos por socios
+    for (const n of notisDocs || []) {
+      alertas.unshift({
+        id: `doc-${n.id}`,
+        tipo: 'documento',
+        titulo: n.titulo,
+        mensaje: n.mensaje,
+        fecha: new Date(n.created_at),
+        leida: n.leida,
+        accionLabel: 'Ver ficha del socio',
+        accionHref: n.metadata?.socio_id ? `/socios/${n.metadata.socio_id}` : '/socios',
+      })
+    }
+
     setNotificaciones(alertas)
     setLoading(false)
   }
@@ -81,13 +96,18 @@ export default function NotificacionesPage() {
       bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700',
       icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     },
+    documento: {
+      bg: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700',
+      icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+    },
   }
 
   const filtradas = filtro === 'todas' ? notificaciones : notificaciones.filter(n => n.tipo === filtro)
   const contadores = {
-    urgente: notificaciones.filter(n => n.tipo === 'urgente').length,
+    urgente:    notificaciones.filter(n => n.tipo === 'urgente').length,
     advertencia: notificaciones.filter(n => n.tipo === 'advertencia').length,
-    info: notificaciones.filter(n => n.tipo === 'info').length,
+    info:       notificaciones.filter(n => n.tipo === 'info').length,
+    documento:  notificaciones.filter(n => n.tipo === 'documento').length,
   }
 
   return (
@@ -103,7 +123,7 @@ export default function NotificacionesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-6">
         <div className="bg-white border border-red-100 rounded-xl p-4 text-center shadow-sm">
           <p className="text-2xl font-bold text-red-600">{contadores.urgente}</p>
           <p className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Urgentes</p>
@@ -116,10 +136,14 @@ export default function NotificacionesPage() {
           <p className="text-2xl font-bold text-blue-600">{contadores.info}</p>
           <p className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Informativas</p>
         </div>
+        <div className="bg-white border border-purple-100 rounded-xl p-4 text-center shadow-sm">
+          <p className="text-2xl font-bold text-purple-600">{contadores.documento}</p>
+          <p className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wide">Documentos</p>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-6">
-        {[{ key: 'todas', label: `Todas (${notificaciones.length})` }, { key: 'urgente', label: 'Urgentes' }, { key: 'advertencia', label: 'Avisos' }, { key: 'info', label: 'Info' }].map(f => (
+        {[{ key: 'todas', label: `Todas (${notificaciones.length})` }, { key: 'urgente', label: 'Urgentes' }, { key: 'advertencia', label: 'Avisos' }, { key: 'info', label: 'Info' }, { key: 'documento', label: 'Documentos' }].map(f => (
           <button key={f.key} onClick={() => setFiltro(f.key)} className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors"
             style={{ backgroundColor: filtro === f.key ? '#0f172a' : 'white', color: filtro === f.key ? 'white' : '#6b7280', borderColor: filtro === f.key ? '#0f172a' : '#e5e7eb' }}>
             {f.label}
@@ -143,11 +167,14 @@ export default function NotificacionesPage() {
           {filtradas.map(n => {
             const c = config[n.tipo]
             return (
-              <div key={n.id} className={`border rounded-xl p-4 ${c.bg} ${c.border}`}>
+              <div key={n.id} className={`border rounded-xl p-4 ${c.bg} ${c.border} ${n.leida === false ? 'ring-1 ring-purple-200' : ''}`}>
                 <div className="flex gap-3 items-start">
                   <div className="mt-0.5 flex-shrink-0">{c.icon}</div>
                   <div className="flex-1 min-w-0">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.badge}`}>{n.tipo.charAt(0).toUpperCase() + n.tipo.slice(1)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.badge}`}>{n.tipo === 'documento' ? 'Documento' : n.tipo.charAt(0).toUpperCase() + n.tipo.slice(1)}</span>
+                      {n.leida === false && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-semibold">Nuevo</span>}
+                    </div>
                     <p className="font-semibold text-gray-900 text-sm mt-1">{n.titulo}</p>
                     <p className="text-gray-600 text-sm mt-0.5">{n.mensaje}</p>
                     {n.accionLabel && (
