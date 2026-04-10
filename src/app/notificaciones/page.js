@@ -172,6 +172,8 @@ export default function NotificacionesPage() {
     pago:       { bg: 'bg-emerald-50',border: 'border-emerald-200',badge: 'bg-emerald-100 text-emerald-700', label: 'Pago', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
     general:    { bg: 'bg-slate-50',  border: 'border-slate-200',  badge: 'bg-slate-100 text-slate-700',  label: 'General',  icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.437L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg> },
     campaña:    { bg: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-700', label: 'Campaña', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
+    consulta:   { bg: 'bg-violet-50', border: 'border-violet-200', badge: 'bg-violet-100 text-violet-700', label: 'Consulta socio', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg> },
+    entrega:    { bg: 'bg-violet-50', border: 'border-violet-200', badge: 'bg-violet-100 text-violet-700', label: 'Consulta socio', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg> },
   }
 
   const filtradas  = filtro === 'todas' ? notificaciones : notificaciones.filter(n => n.tipo === filtro)
@@ -180,6 +182,7 @@ export default function NotificacionesPage() {
     advertencia: notificaciones.filter(n => n.tipo === 'advertencia').length,
     info:        notificaciones.filter(n => n.tipo === 'info').length,
     documento:   notificaciones.filter(n => n.tipo === 'documento').length,
+    consulta:    notificaciones.filter(n => ['consulta','entrega'].includes(n.tipo)).length,
   }
 
   return (
@@ -214,12 +217,13 @@ export default function NotificacionesPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-5 gap-3 mb-6">
         {[
           { label: 'Urgentes',    count: contadores.urgente,    color: 'text-red-600',    border: 'border-red-100' },
           { label: 'Avisos',      count: contadores.advertencia, color: 'text-yellow-600', border: 'border-yellow-100' },
           { label: 'Informativas',count: contadores.info,       color: 'text-blue-600',   border: 'border-blue-100' },
           { label: 'Documentos',  count: contadores.documento,  color: 'text-purple-600', border: 'border-purple-100' },
+          { label: 'Consultas',   count: contadores.consulta,   color: 'text-violet-600', border: 'border-violet-100' },
         ].map(k => (
           <div key={k.label} className={`bg-white border ${k.border} rounded-xl p-4 text-center shadow-sm`}>
             <p className={`text-2xl font-bold ${k.color}`}>{k.count}</p>
@@ -236,6 +240,7 @@ export default function NotificacionesPage() {
           { key: 'advertencia', label: 'Avisos' },
           { key: 'info',        label: 'Info' },
           { key: 'documento',   label: 'Documentos' },
+          { key: 'consulta',    label: 'Consultas' },
         ].map(f => (
           <button key={f.key} onClick={() => setFiltro(f.key)}
             className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors"
