@@ -1,7 +1,6 @@
 import { spawn } from 'child_process'
 import path from 'path'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 function getAdminClient() {
   return createClient(
@@ -21,16 +20,24 @@ async function getUserId(request) {
 }
 
 function runPython(payload) {
+  // En Windows el ejecutable es 'python', en Linux/Mac es 'python3'
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(process.cwd(), 'scripts', 'generar_excel.py')
-    const proc = spawn('python3', [scriptPath])
+    const proc = spawn(pythonCmd, [scriptPath])
     const chunks = []
+    const errChunks = []
     proc.stdout.on('data', d => chunks.push(d))
-    proc.stderr.on('data', d => console.error('python stderr:', d.toString()))
+    proc.stderr.on('data', d => { errChunks.push(d); console.error('python stderr:', d.toString()) })
     proc.on('close', code => {
-      if (code !== 0) reject(new Error(`Python exited ${code}`))
-      else resolve(Buffer.concat(chunks))
+      if (code !== 0) {
+        const errMsg = Buffer.concat(errChunks).toString().slice(0, 300)
+        reject(new Error(`Python error (${code}): ${errMsg}`))
+      } else {
+        resolve(Buffer.concat(chunks))
+      }
     })
+    proc.on('error', err => reject(new Error(`No se pudo iniciar Python: ${err.message}. Asegúrate de tener Python instalado.`)))
     proc.stdin.write(JSON.stringify(payload))
     proc.stdin.end()
   })
