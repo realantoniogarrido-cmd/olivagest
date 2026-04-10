@@ -46,8 +46,8 @@ export default function FichaSocioPage() {
       })
 
       const [entregasRes, liqRes, parcelasRes] = await Promise.all([
-        supabase.from('entregas').select('*, campanas(nombre)').eq('socio_id', id).order('fecha', { ascending: false }),
-        supabase.from('liquidaciones').select('*, campanas(nombre)').eq('socio_id', id).order('created_at', { ascending: false }),
+        supabase.from('entregas').select('*, parcelas(nombre)').eq('socio_id', id).order('fecha', { ascending: false }),
+        supabase.from('liquidaciones').select('*').eq('socio_id', id).order('created_at', { ascending: false }),
         supabase.from('parcelas').select('*').eq('socio_id', id).order('nombre'),
       ])
       setEntregas(entregasRes.data || [])
@@ -113,9 +113,9 @@ export default function FichaSocioPage() {
     return 'cooperativa'
   }
 
-  const totalKg      = entregas.reduce((s, e) => s + (e.kg_bruto || 0), 0)
-  const totalAceite  = entregas.reduce((s, e) => e.rendimiento ? s + (e.kg_bruto * e.rendimiento) / 100 : s, 0)
-  const totalCobrado = liquidaciones.reduce((s, l) => s + (l.importe_total || 0), 0)
+  const totalKg      = entregas.reduce((s, e) => s + parseFloat(e.kg_bruto || 0), 0)
+  const totalAceite  = entregas.reduce((s, e) => e.rendimiento ? s + (parseFloat(e.kg_bruto) * parseFloat(e.rendimiento)) / 100 : s, 0)
+  const totalCobrado = liquidaciones.reduce((s, l) => s + parseFloat(l.importe_total || 0), 0)
 
   if (loading) return (
     <div className="flex h-full items-center justify-center py-32">
@@ -264,25 +264,42 @@ export default function FichaSocioPage() {
           <div className="space-y-4">
             {liquidaciones.length === 0
               ? <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400 text-sm">No hay liquidaciones registradas.</div>
-              : liquidaciones.map(liq => (
+              : liquidaciones.map(liq => {
+                const kgT   = parseFloat(liq.kg_totales || 0)
+                const rb    = parseFloat(liq.rendimiento_bruto || 0)
+                const pe    = parseFloat(liq.punto_extraccion || 0)
+                const rn    = Math.max(0, rb - pe)
+                const kgAceite = parseFloat(liq.kg_aceite_final) || (kgT * rn / 100)
+                const imp   = parseFloat(liq.importe_total || 0)
+                const pKg   = parseFloat(liq.precio_kg || 0)
+                return (
                 <div key={liq.id} className="bg-white rounded-xl border border-gray-100 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-gray-900">{liq.campanas?.nombre || 'Campaña'}</h3>
+                  <div className="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-base">{liq.campana || 'Sin campaña'}</h3>
+                      {liq.estado && (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${
+                          liq.estado === 'pagada' ? 'bg-green-50 text-green-700' :
+                          liq.estado === 'pendiente_pago' ? 'bg-amber-50 text-amber-700' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {liq.estado === 'pagada' ? 'Pagada' : liq.estado === 'pendiente_pago' ? 'Pend. de pago' : 'Borrador'}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-2xl font-extrabold text-[#4a7a1e]">
-                      {liq.importe_total?.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                      {imp.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
                     </span>
                   </div>
                   <div className="grid grid-cols-4 gap-4">
-                    <div><p className="text-xs text-gray-400 mb-1">Kg aceituna</p><p className="text-sm font-semibold text-gray-800">{liq.kg_aceituna ? `${liq.kg_aceituna.toLocaleString('es-ES')} kg` : '—'}</p></div>
-                    <div><p className="text-xs text-gray-400 mb-1">Kg aceite</p><p className="text-sm font-semibold text-gray-800">{liq.kg_aceite ? `${liq.kg_aceite.toLocaleString('es-ES', { maximumFractionDigits:1 })} kg` : '—'}</p></div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">Rendimiento</p>
-                      <p className="text-sm font-semibold text-gray-800">{liq.kg_aceituna && liq.kg_aceite ? `${((liq.kg_aceite/liq.kg_aceituna)*100).toFixed(1)}%` : '—'}</p>
-                    </div>
-                    <div><p className="text-xs text-gray-400 mb-1">Precio/kg</p><p className="text-sm font-semibold text-gray-800">{liq.precio_kg ? `${liq.precio_kg.toLocaleString('es-ES', { minimumFractionDigits:2 })} €` : '—'}</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Kg aceituna</p><p className="text-sm font-semibold text-gray-800">{kgT > 0 ? `${kgT.toLocaleString('es-ES')} kg` : '—'}</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Kg aceite</p><p className="text-sm font-semibold text-gray-800">{kgAceite > 0 ? `${kgAceite.toLocaleString('es-ES', { maximumFractionDigits:1 })} kg` : '—'}</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Rendimiento neto</p><p className="text-sm font-semibold text-gray-800">{rn > 0 ? `${rn.toFixed(1)}%` : '—'}</p></div>
+                    <div><p className="text-xs text-gray-400 mb-1">Precio/kg</p><p className="text-sm font-semibold text-gray-800">{pKg > 0 ? `${pKg.toLocaleString('es-ES', { minimumFractionDigits:2 })} €` : '—'}</p></div>
                   </div>
                 </div>
-              ))
+                )
+              })
             }
           </div>
         )}
@@ -444,12 +461,12 @@ function EntregasTable({ entregas }) {
       <tbody>
         {entregas.map((e, i) => (
           <tr key={e.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-            <td className="px-6 py-3 text-gray-700">{new Date(e.fecha + 'T00:00:00').toLocaleDateString('es-ES')}</td>
-            <td className="px-6 py-3 text-gray-500 text-xs">{e.campanas?.nombre || '—'}</td>
-            <td className="px-6 py-3 text-right font-medium tabular-nums">{e.kg_bruto?.toLocaleString('es-ES')} kg</td>
-            <td className="px-6 py-3 text-right text-gray-500 tabular-nums">{e.rendimiento != null ? `${e.rendimiento}%` : '—'}</td>
+            <td className="px-6 py-3 text-gray-700">{e.fecha ? new Date(e.fecha + 'T00:00:00').toLocaleDateString('es-ES') : '—'}</td>
+            <td className="px-6 py-3 text-gray-600 text-xs font-medium">{e.campana || '—'}</td>
+            <td className="px-6 py-3 text-right font-semibold text-gray-900 tabular-nums">{e.kg_bruto ? `${parseFloat(e.kg_bruto).toLocaleString('es-ES')} kg` : '—'}</td>
+            <td className="px-6 py-3 text-right text-gray-700 tabular-nums">{e.rendimiento != null ? `${e.rendimiento}%` : '—'}</td>
             <td className="px-6 py-3 text-right text-[#4a7a1e] font-semibold tabular-nums">
-              {e.rendimiento ? ((e.kg_bruto * e.rendimiento) / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' kg' : '—'}
+              {e.rendimiento ? (parseFloat(e.kg_bruto) * parseFloat(e.rendimiento) / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' kg' : '—'}
             </td>
             <td className="px-6 py-3">
               <span className="bg-[#e8f5d8] text-[#2d6a0d] text-xs font-semibold px-2 py-0.5 rounded">{e.calidad || 'AOVE'}</span>
